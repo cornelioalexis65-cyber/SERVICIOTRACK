@@ -1,0 +1,103 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.form input,
+.form textarea {
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.form textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form button {
+  width: fit-content;
+  background: #646cff;
+  color: white;
+  font-weight: 600;
+}
+
+.form button:hover {
+  opacity: 0.9;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history h2 {
+  margin-bottom: 4px;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cancel-button {
+  background: #e5e5e5;
+  color: #222;
+}
+
+.record-info {
+  flex: 1;
+}
+
+.record-info small {
+  display: block;
+  margin-top: 6px;
+  opacity: 0.6;
+}
+
+.record-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: 16px;
+}
+
+.record-actions button {
+  margin-top: 0;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.edit-button {
+  background: #e5e5e5;
+  color: #222;
+}
+
+.delete-button {
+  background: #ffdddd;
+  color: #a00000;
+}
+
+@media (max-width: 600px) {
+  .record {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .record-actions {
+    margin-left: 0;
+  }
+}
