@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 
 type Registro = {
@@ -12,6 +12,31 @@ function App() {
   const totalHours = 500
 
   const [registros, setRegistros] = useState<Registro[]>([])
+const [cargando, setCargando] = useState(true)
+
+useEffect(() => {
+  const registrosGuardados = localStorage.getItem('serviciotrack-registros')
+
+  if (registrosGuardados) {
+    try {
+      const registrosParseados: Registro[] = JSON.parse(registrosGuardados)
+      setRegistros(registrosParseados)
+    } catch (error) {
+      console.error('Error al cargar los registros:', error)
+    }
+  }
+
+  setCargando(false)
+}, [])
+
+useEffect(() => {
+  if (!cargando) {
+    localStorage.setItem(
+      'serviciotrack-registros',
+      JSON.stringify(registros)
+    )
+  }
+}, [registros, cargando])
 
   const [fecha, setFecha] = useState('')
   const [horas, setHoras] = useState('')
