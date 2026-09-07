@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# SQLite Databases
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
