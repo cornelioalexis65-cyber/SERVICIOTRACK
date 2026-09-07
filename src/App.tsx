@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import './App.css'
 import type { Registro } from './types/registro'
 import { useRegistros } from './hooks/useRegistros'
 import { Header } from './components/Header'
@@ -77,37 +76,39 @@ function App() {
   }
 
   return (
-    <main className="app">
-      <Header />
+    <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 space-y-8">
+        <Header />
 
-      <Dashboard
-        totalHours={totalHours}
-        horasRealizadas={horasRealizadas}
-        horasRestantes={horasRestantes}
-        progreso={progreso}
-        diasRegistrados={diasRegistrados}
-        promedioHoras={promedioHoras}
-        ultimaFecha={ultimaFecha}
-      />
+        <Dashboard
+          totalHours={totalHours}
+          horasRealizadas={horasRealizadas}
+          horasRestantes={horasRestantes}
+          progreso={progreso}
+          diasRegistrados={diasRegistrados}
+          promedioHoras={promedioHoras}
+          ultimaFecha={ultimaFecha}
+        />
 
-      <RegistroForm
-        fecha={fecha}
-        horas={horas}
-        actividad={actividad}
-        registroEditando={registroEditando}
-        onFechaChange={setFecha}
-        onHorasChange={setHoras}
-        onActividadChange={setActividad}
-        onGuardar={guardarRegistro}
-        onCancelar={limpiarFormulario}
-      />
+        <RegistroForm
+          fecha={fecha}
+          horas={horas}
+          actividad={actividad}
+          registroEditando={registroEditando}
+          onFechaChange={setFecha}
+          onHorasChange={setHoras}
+          onActividadChange={setActividad}
+          onGuardar={guardarRegistro}
+          onCancelar={limpiarFormulario}
+        />
 
-      <Historial
-        registros={registrosOrdenados}
-        onEditar={editarRegistro}
-        onEliminar={confirmarEliminar}
-      />
-    </main>
+        <Historial
+          registros={registrosOrdenados}
+          onEditar={editarRegistro}
+          onEliminar={confirmarEliminar}
+        />
+      </div>
+    </div>
   )
 }
 
