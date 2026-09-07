@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Registro } from './types/registro'
 import { useRegistros } from './hooks/useRegistros'
 import { Header } from './components/Header'
+import { InstalarAppBanner } from './components/InstalarAppBanner'
 import { AlertasBanner } from './components/AlertasBanner'
 import { Dashboard } from './components/Dashboard'
 import { RegistroForm } from './components/RegistroForm'
@@ -101,6 +102,8 @@ function App() {
           onAbrirPerfil={() => setModalPerfilAbierto(true)}
           onAbrirReporte={() => setModalReporteAbierto(true)}
         />
+
+        <InstalarAppBanner />
 
         <AlertasBanner
           horasRealizadas={horasRealizadas}
