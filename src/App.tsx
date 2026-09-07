@@ -16,9 +16,12 @@ function App() {
     diasRegistrados,
     promedioHoras,
     ultimaFecha,
+    backendConectado,
+    sincronizando,
     agregarRegistro,
     actualizarRegistro,
     eliminarRegistro,
+    sincronizarConBackend,
   } = useRegistros()
 
   // Estado local del formulario
@@ -34,7 +37,7 @@ function App() {
     setRegistroEditando(null)
   }
 
-  const guardarRegistro = () => {
+  const guardarRegistro = async () => {
     const datos = {
       fecha,
       horas: Number(horas),
@@ -43,8 +46,8 @@ function App() {
 
     const resultado =
       registroEditando !== null
-        ? actualizarRegistro(registroEditando, datos)
-        : agregarRegistro(datos)
+        ? await actualizarRegistro(registroEditando, datos)
+        : await agregarRegistro(datos)
 
     if (!resultado.exito) {
       alert(resultado.error)
@@ -61,14 +64,14 @@ function App() {
     setRegistroEditando(registro.id)
   }
 
-  const confirmarEliminar = (id: number) => {
+  const confirmarEliminar = async (id: number) => {
     const confirmar = window.confirm(
       '¿Seguro que quieres eliminar este registro?'
     )
 
     if (!confirmar) return
 
-    eliminarRegistro(id)
+    await eliminarRegistro(id)
 
     if (registroEditando === id) {
       limpiarFormulario()
@@ -78,7 +81,11 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white pb-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 space-y-8">
-        <Header />
+        <Header
+          backendConectado={backendConectado}
+          sincronizando={sincronizando}
+          onReconectar={sincronizarConBackend}
+        />
 
         <Dashboard
           totalHours={totalHours}
