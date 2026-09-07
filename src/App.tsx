@@ -1,178 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
 import type { Registro } from './types/registro'
+import { useRegistros } from './hooks/useRegistros'
 
 function App() {
-  const totalHours = 500
+  const {
+    registros,
+    registrosOrdenados,
+    totalHours,
+    horasRealizadas,
+    horasRestantes,
+    progreso,
+    diasRegistrados,
+    promedioHoras,
+    ultimaFecha,
+    agregarRegistro,
+    actualizarRegistro,
+    eliminarRegistro,
+  } = useRegistros()
 
-  const [registros, setRegistros] = useState<Registro[]>([])
-  const [cargando, setCargando] = useState(true)
-
-  // Cargar registros guardados
-  useEffect(() => {
-    const registrosGuardados = localStorage.getItem(
-      'serviciotrack-registros'
-    )
-
-    if (registrosGuardados) {
-      try {
-        const registrosParseados: Registro[] =
-          JSON.parse(registrosGuardados)
-
-        setRegistros(registrosParseados)
-      } catch (error) {
-        console.error(
-          'Error al cargar los registros:',
-          error
-        )
-      }
-    }
-
-    setCargando(false)
-  }, [])
-
-  // Guardar registros
-  useEffect(() => {
-    if (!cargando) {
-      localStorage.setItem(
-        'serviciotrack-registros',
-        JSON.stringify(registros)
-      )
-    }
-  }, [registros, cargando])
-
-  // Formulario
+  // Estado del Formulario
   const [fecha, setFecha] = useState('')
   const [horas, setHoras] = useState('')
   const [actividad, setActividad] = useState('')
-
-  // Registro que estamos editando
-  const [registroEditando, setRegistroEditando] =
-    useState<number | null>(null)
-
-  // Cálculos
-  const horasRealizadas = registros.reduce(
-    (total, registro) => total + registro.horas,
-    0
-  )
-
-  const horasRestantes = Math.max(
-    totalHours - horasRealizadas,
-    0
-  )
-
-  const progreso = Math.min(
-    (horasRealizadas / totalHours) * 100,
-    100
-  )
-
-  const diasRegistrados = registros.length
-
-  const promedioHoras =
-    diasRegistrados > 0
-      ? horasRealizadas / diasRegistrados
-      : 0
-
-  // Ordenar registros por fecha
-  const registrosOrdenados = [...registros].sort(
-    (a, b) => b.fecha.localeCompare(a.fecha)
-  )
-
-  // Obtener la fecha más reciente
-  const ultimaFecha =
-    registrosOrdenados.length > 0
-      ? registrosOrdenados[0].fecha
-      : 'Sin registros'
-
-  // Guardar o editar registro
-  const guardarRegistro = () => {
-    if (!fecha || !horas || !actividad) {
-      alert('Completa todos los campos')
-      return
-    }
-
-    if (Number(horas) <= 0) {
-      alert('Las horas deben ser mayores a 0')
-      return
-    }
-
-    if (Number(horas) > 24) {
-      alert('Las horas no pueden ser mayores a 24')
-      return
-    }
-
-    const horasActuales = registroEditando !== null
-      ? horasRealizadas -
-        (registros.find(
-          (registro) => registro.id === registroEditando
-        )?.horas ?? 0)
-      : horasRealizadas
-
-    if (horasActuales + Number(horas) > totalHours) {
-      alert(`No puedes superar las ${totalHours} horas de servicio social`)
-      return
-   }
-
-    if (registroEditando !== null) {
-      // Editar registro existente
-      setRegistros(
-        registros.map((registro) =>
-          registro.id === registroEditando
-            ? {
-                ...registro,
-                fecha,
-                horas: Number(horas),
-                actividad,
-              }
-            : registro
-        )
-      )
-
-      setRegistroEditando(null)
-    } else {
-      // Crear nuevo registro
-      const nuevoRegistro: Registro = {
-        id: Date.now(),
-        fecha,
-        horas: Number(horas),
-        actividad,
-      }
-
-      setRegistros([...registros, nuevoRegistro])
-    }
-
-    limpiarFormulario()
-  }
-
-  // Editar registro
-  const editarRegistro = (registro: Registro) => {
-    setFecha(registro.fecha)
-    setHoras(String(registro.horas))
-    setActividad(registro.actividad)
-
-    setRegistroEditando(registro.id)
-  }
-
-  // Eliminar registro
-  const eliminarRegistro = (id: number) => {
-    const confirmar = window.confirm(
-      '¿Seguro que quieres eliminar este registro?'
-    )
-
-    if (!confirmar) {
-      return
-    }
-
-    setRegistros(
-      registros.filter(
-        (registro) => registro.id !== id
-      )
-    )
-
-    if (registroEditando === id) {
-      limpiarFormulario()
-    }
-  }
+  const [registroEditando, setRegistroEditando] = useState<number | null>(null)
 
   // Limpiar formulario
   const limpiarFormulario = () => {
@@ -180,6 +31,50 @@ function App() {
     setHoras('')
     setActividad('')
     setRegistroEditando(null)
+  }
+
+  // Guardar o editar registro
+  const guardarRegistro = () => {
+    const datos = {
+      fecha,
+      horas: Number(horas),
+      actividad,
+    }
+
+    const resultado =
+      registroEditando !== null
+        ? actualizarRegistro(registroEditando, datos)
+        : agregarRegistro(datos)
+
+    if (!resultado.exito) {
+      alert(resultado.error)
+      return
+    }
+
+    limpiarFormulario()
+  }
+
+  // Cargar registro para edición
+  const editarRegistro = (registro: Registro) => {
+    setFecha(registro.fecha)
+    setHoras(String(registro.horas))
+    setActividad(registro.actividad)
+    setRegistroEditando(registro.id)
+  }
+
+  // Eliminar registro con confirmación
+  const confirmarEliminar = (id: number) => {
+    const confirmar = window.confirm(
+      '¿Seguro que quieres eliminar este registro?'
+    )
+
+    if (!confirmar) return
+
+    eliminarRegistro(id)
+
+    if (registroEditando === id) {
+      limpiarFormulario()
+    }
   }
 
   return (
@@ -400,7 +295,7 @@ function App() {
                 <button
                   className="delete-button"
                   onClick={() =>
-                    eliminarRegistro(registro.id)
+                    confirmarEliminar(registro.id)
                   }
                 >
                   Eliminar
