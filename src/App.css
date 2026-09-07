@@ -101,3 +101,32 @@
     margin-left: 0;
   }
 }
+
+.extra-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.extra-card {
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+}
+
+.extra-card span {
+  display: block;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+
+.extra-card strong {
+  font-size: 1.4rem;
+}
+
+@media (max-width: 700px) {
+  .extra-summary {
+    grid-template-columns: 1fr;
+  }
+}
