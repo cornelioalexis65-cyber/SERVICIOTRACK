@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-
-type Registro = {
-  id: number
-  fecha: string
-  horas: number
-  actividad: string
-}
+import type { Registro } from './types/registro'
 
 function App() {
   const totalHours = 500
