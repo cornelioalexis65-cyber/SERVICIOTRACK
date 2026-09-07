@@ -1,0 +1,17 @@
+{
+  "name": "ServicioTrack - Control de Servicio Social",
+  "short_name": "ServicioTrack",
+  "description": "Aplicación profesional para el registro, control y reportes de horas de servicio social.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

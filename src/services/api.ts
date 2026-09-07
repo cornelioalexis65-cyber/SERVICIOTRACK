@@ -1,4 +1,4 @@
-import type { Registro } from '../types/registro'
+import type { Registro, PerfilEstudiante } from '../types/registro'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -65,4 +65,26 @@ export async function deleteRegistroApi(id: number): Promise<void> {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.error || 'Error al eliminar el registro en el servidor.')
   }
+}
+
+export async function fetchPerfilApi(): Promise<PerfilEstudiante> {
+  const res = await fetch(`${API_BASE_URL}/perfil`, { signal: AbortSignal.timeout(4000) })
+  if (!res.ok) {
+    throw new Error('Error al obtener perfil del servidor.')
+  }
+  return res.json()
+}
+
+export async function updatePerfilApi(perfil: PerfilEstudiante): Promise<PerfilEstudiante> {
+  const res = await fetch(`${API_BASE_URL}/perfil`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(perfil),
+    signal: AbortSignal.timeout(4000),
+  })
+
+  if (!res.ok) {
+    throw new Error('Error al guardar perfil en el servidor.')
+  }
+  return res.json()
 }

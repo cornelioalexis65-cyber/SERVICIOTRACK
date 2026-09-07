@@ -1,18 +1,31 @@
 import { useEffect, useState, useCallback } from 'react'
-import type { Registro } from '../types/registro'
+import type { Registro, PerfilEstudiante } from '../types/registro'
 import {
   checkBackendHealth,
   fetchRegistrosApi,
   createRegistroApi,
   updateRegistroApi,
   deleteRegistroApi,
+  fetchPerfilApi,
+  updatePerfilApi,
 } from '../services/api'
 
 const STORAGE_KEY = 'serviciotrack-registros'
-export const TOTAL_HOURS = 500
+const PROFILE_KEY = 'serviciotrack-perfil'
+
+const PERFIL_DEFAULT: PerfilEstudiante = {
+  nombre: 'Alexis',
+  matricula: '2026-ST01',
+  carrera: 'Ingeniería en Sistemas Computacionales',
+  institucion: 'Tecnológico / Universidad',
+  fechaInicio: '2026-09-01',
+  fechaLimite: '2027-03-01',
+  horasObjetivo: 500,
+}
 
 export function useRegistros() {
   const [registros, setRegistros] = useState<Registro[]>([])
+  const [perfil, setPerfil] = useState<PerfilEstudiante>(PERFIL_DEFAULT)
   const [cargando, setCargando] = useState(true)
   const [backendConectado, setBackendConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
@@ -25,13 +38,24 @@ export function useRegistros() {
         const parseados: Registro[] = JSON.parse(guardados)
         setRegistros(parseados)
       } catch (e) {
-        console.error('Error al leer localStorage:', e)
+        console.error('Error al leer localStorage de registros:', e)
       }
     }
+
+    const perfilGuardado = localStorage.getItem(PROFILE_KEY)
+    if (perfilGuardado) {
+      try {
+        const parseadoPerfil: PerfilEstudiante = JSON.parse(perfilGuardado)
+        setPerfil(parseadoPerfil)
+      } catch (e) {
+        console.error('Error al leer localStorage de perfil:', e)
+      }
+    }
+
     setCargando(false)
   }, [])
 
-  // 2. Comprobar backend y sincronizar
+  // 2. Comprobar backend y sincronizar registros y perfil
   const sincronizarConBackend = useCallback(async () => {
     setSincronizando(true)
     const isOnline = await checkBackendHealth()
@@ -39,11 +63,20 @@ export function useRegistros() {
 
     if (isOnline) {
       try {
-        const registrosRemotos = await fetchRegistrosApi()
+        const [registrosRemotos, perfilRemoto] = await Promise.all([
+          fetchRegistrosApi(),
+          fetchPerfilApi().catch(() => null),
+        ])
+
         setRegistros(registrosRemotos)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(registrosRemotos))
+
+        if (perfilRemoto) {
+          setPerfil(perfilRemoto)
+          localStorage.setItem(PROFILE_KEY, JSON.stringify(perfilRemoto))
+        }
       } catch (error) {
-        console.warn('No se pudieron obtener registros del backend:', error)
+        console.warn('Error al sincronizar con el backend:', error)
       }
     }
     setSincronizando(false)
@@ -60,10 +93,17 @@ export function useRegistros() {
     }
   }, [registros, cargando])
 
+  useEffect(() => {
+    if (!cargando) {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(perfil))
+    }
+  }, [perfil, cargando])
+
   // --- Métricas Derivadas ---
+  const totalHours = perfil.horasObjetivo || 500
   const horasRealizadas = registros.reduce((total, r) => total + r.horas, 0)
-  const horasRestantes = Math.max(TOTAL_HOURS - horasRealizadas, 0)
-  const progreso = Math.min((horasRealizadas / TOTAL_HOURS) * 100, 100)
+  const horasRestantes = Math.max(totalHours - horasRealizadas, 0)
+  const progreso = Math.min((horasRealizadas / totalHours) * 100, 100)
   const diasRegistrados = registros.length
   const promedioHoras = diasRegistrados > 0 ? horasRealizadas / diasRegistrados : 0
 
@@ -73,6 +113,24 @@ export function useRegistros() {
 
   const ultimaFecha =
     registrosOrdenados.length > 0 ? registrosOrdenados[0].fecha : 'Sin registros'
+
+  // --- Cálculos de Fechas Límite y Ritmo ---
+  let diasRestantesLimite: number | null = null
+  let ritmoRecomendado: number | null = null
+
+  if (perfil.fechaLimite) {
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    const [y, m, d] = perfil.fechaLimite.split('-').map(Number)
+    const fechaFin = new Date(y, m - 1, d)
+    const diffMs = fechaFin.getTime() - hoy.getTime()
+    const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+    diasRestantesLimite = Math.max(diffDias, 0)
+
+    if (horasRestantes > 0 && diasRestantesLimite > 0) {
+      ritmoRecomendado = Number((horasRestantes / diasRestantesLimite).toFixed(1))
+    }
+  }
 
   // --- Validaciones Frontend ---
   const validarRegistro = (
@@ -102,17 +160,17 @@ export function useRegistros() {
       ? horasRealizadas - (registros.find((r) => r.id === idEditando)?.horas ?? 0)
       : horasRealizadas
 
-    if (horasPrevias + horas > TOTAL_HOURS) {
+    if (horasPrevias + horas > totalHours) {
       return {
         valido: false,
-        error: `No puedes superar el límite de ${TOTAL_HOURS} horas de servicio social.`,
+        error: `No puedes superar el límite de ${totalHours} horas de servicio social.`,
       }
     }
 
     return { valido: true }
   }
 
-  // --- Operaciones CRUD (Híbridas con sincronización) ---
+  // --- Operaciones CRUD ---
   const agregarRegistro = async (
     datos: Omit<Registro, 'id'>
   ): Promise<{ exito: boolean; error?: string }> => {
@@ -131,7 +189,6 @@ export function useRegistros() {
       }
     }
 
-    // Modo local / offline
     const nuevoLocal: Registro = {
       id: Date.now(),
       fecha: datos.fecha,
@@ -163,7 +220,6 @@ export function useRegistros() {
       }
     }
 
-    // Modo local / offline
     setRegistros((prev) =>
       prev.map((reg) =>
         reg.id === id
@@ -191,22 +247,39 @@ export function useRegistros() {
     setRegistros((prev) => prev.filter((reg) => reg.id !== id))
   }
 
+  const actualizarPerfil = async (nuevoPerfil: PerfilEstudiante): Promise<void> => {
+    setPerfil(nuevoPerfil)
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
+
+    if (backendConectado) {
+      try {
+        await updatePerfilApi(nuevoPerfil)
+      } catch (err) {
+        console.warn('Error al actualizar perfil en backend:', err)
+      }
+    }
+  }
+
   return {
     registros,
     registrosOrdenados,
+    perfil,
     cargando,
     backendConectado,
     sincronizando,
-    totalHours: TOTAL_HOURS,
+    totalHours,
     horasRealizadas,
     horasRestantes,
     progreso,
     diasRegistrados,
     promedioHoras,
     ultimaFecha,
+    diasRestantesLimite,
+    ritmoRecomendado,
     agregarRegistro,
     actualizarRegistro,
     eliminarRegistro,
+    actualizarPerfil,
     sincronizarConBackend,
   }
 }

@@ -17,7 +17,6 @@ export const db = drizzle(client, { schema })
 
 /**
  * Inicializa la base de datos asegurando la creación de tablas
- * necesarias tanto en SQLite local como en libSQL/Turso.
  */
 export async function initDB() {
   try {
@@ -30,6 +29,26 @@ export async function initDB() {
         creado_en TEXT DEFAULT CURRENT_TIMESTAMP
       );
     `)
+
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS perfil_estudiante (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        nombre TEXT NOT NULL DEFAULT 'Estudiante',
+        matricula TEXT NOT NULL DEFAULT '',
+        carrera TEXT NOT NULL DEFAULT '',
+        institucion TEXT NOT NULL DEFAULT '',
+        fecha_inicio TEXT NOT NULL DEFAULT '',
+        fecha_limite TEXT NOT NULL DEFAULT '',
+        horas_objetivo REAL NOT NULL DEFAULT 500
+      );
+    `)
+
+    // Insertar registro de perfil inicial si no existe
+    await client.execute(`
+      INSERT OR IGNORE INTO perfil_estudiante (id, nombre, matricula, carrera, institucion, fecha_inicio, fecha_limite, horas_objetivo)
+      VALUES (1, 'Alexis', '2026-ST', 'Ingeniería en Sistemas', 'Institución Educativa', '2026-09-01', '2027-03-01', 500);
+    `)
+
     console.log('✅ Base de datos inicializada correctamente')
   } catch (error) {
     console.error('❌ Error al inicializar la base de datos:', error)

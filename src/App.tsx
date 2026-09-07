@@ -2,13 +2,18 @@ import { useState } from 'react'
 import type { Registro } from './types/registro'
 import { useRegistros } from './hooks/useRegistros'
 import { Header } from './components/Header'
+import { AlertasBanner } from './components/AlertasBanner'
 import { Dashboard } from './components/Dashboard'
 import { RegistroForm } from './components/RegistroForm'
 import { Historial } from './components/Historial'
+import { PerfilModal } from './components/PerfilModal'
+import { ReporteModal } from './components/ReporteModal'
 
 function App() {
   const {
+    registros,
     registrosOrdenados,
+    perfil,
     totalHours,
     horasRealizadas,
     horasRestantes,
@@ -16,13 +21,20 @@ function App() {
     diasRegistrados,
     promedioHoras,
     ultimaFecha,
+    diasRestantesLimite,
+    ritmoRecomendado,
     backendConectado,
     sincronizando,
     agregarRegistro,
     actualizarRegistro,
     eliminarRegistro,
+    actualizarPerfil,
     sincronizarConBackend,
   } = useRegistros()
+
+  // Modales
+  const [modalPerfilAbierto, setModalPerfilAbierto] = useState(false)
+  const [modalReporteAbierto, setModalReporteAbierto] = useState(false)
 
   // Estado local del formulario
   const [fecha, setFecha] = useState('')
@@ -82,9 +94,20 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white pb-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 space-y-8">
         <Header
+          perfil={perfil}
           backendConectado={backendConectado}
           sincronizando={sincronizando}
           onReconectar={sincronizarConBackend}
+          onAbrirPerfil={() => setModalPerfilAbierto(true)}
+          onAbrirReporte={() => setModalReporteAbierto(true)}
+        />
+
+        <AlertasBanner
+          horasRealizadas={horasRealizadas}
+          horasRestantes={horasRestantes}
+          totalHours={totalHours}
+          diasRestantesLimite={diasRestantesLimite}
+          ritmoRecomendado={ritmoRecomendado}
         />
 
         <Dashboard
@@ -115,6 +138,22 @@ function App() {
           onEliminar={confirmarEliminar}
         />
       </div>
+
+      {/* Modales */}
+      <PerfilModal
+        perfil={perfil}
+        abierto={modalPerfilAbierto}
+        onCerrar={() => setModalPerfilAbierto(false)}
+        onGuardar={actualizarPerfil}
+      />
+
+      <ReporteModal
+        perfil={perfil}
+        registros={registros}
+        totalHours={totalHours}
+        abierto={modalReporteAbierto}
+        onCerrar={() => setModalReporteAbierto(false)}
+      />
     </div>
   )
 }

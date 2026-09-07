@@ -1,13 +1,21 @@
+import type { PerfilEstudiante } from '../types/registro'
+
 interface HeaderProps {
+  perfil: PerfilEstudiante
   backendConectado?: boolean
   sincronizando?: boolean
   onReconectar?: () => void
+  onAbrirPerfil: () => void
+  onAbrirReporte: () => void
 }
 
 export function Header({
+  perfil,
   backendConectado = false,
   sincronizando = false,
   onReconectar,
+  onAbrirPerfil,
+  onAbrirReporte,
 }: HeaderProps) {
   return (
     <header className="border-b border-slate-800/80 pb-6 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -16,16 +24,41 @@ export function Header({
           ST
         </div>
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            ServicioTrack
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+              ServicioTrack
+            </h1>
+            <span className="hidden sm:inline-block text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+              v1.0
+            </span>
+          </div>
           <p className="text-sm text-slate-400 font-medium">
-            Control y Gestión de Servicio Social
+            {perfil.nombre ? `Prestador: ${perfil.nombre}` : 'Control y Gestión de Servicio Social'}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto justify-end">
+      <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-end">
+        {/* Botón de Perfil */}
+        <button
+          type="button"
+          onClick={onAbrirPerfil}
+          title="Editar información del estudiante"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+        >
+          👤 Perfil
+        </button>
+
+        {/* Botón de Generar Reporte */}
+        <button
+          type="button"
+          onClick={onAbrirReporte}
+          title="Generar e imprimir reporte en PDF"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-xs font-semibold text-indigo-300 transition-colors cursor-pointer"
+        >
+          📄 Reporte PDF
+        </button>
+
         {/* Indicador de Estado del Servidor */}
         <button
           type="button"
@@ -50,13 +83,8 @@ export function Header({
             ? 'Sincronizando...'
             : backendConectado
             ? 'API Conectada'
-            : 'Modo Offline (Local)'}
+            : 'Modo Offline'}
         </button>
-
-        {/* Badge de Meta */}
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-          🎯 Meta: 500 Horas
-        </span>
       </div>
     </header>
   )
