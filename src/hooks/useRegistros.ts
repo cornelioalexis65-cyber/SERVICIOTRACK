@@ -14,12 +14,12 @@ const STORAGE_KEY = 'serviciotrack-registros'
 const PROFILE_KEY = 'serviciotrack-perfil'
 
 const PERFIL_DEFAULT: PerfilEstudiante = {
-  nombre: 'Alexis',
-  matricula: '2026-ST01',
+  nombre: '',
+  matricula: '',
   carrera: 'Ingeniería en Sistemas Computacionales',
-  institucion: 'Tecnológico / Universidad',
+  institucion: 'TecNM Campus Escárcega',
   fechaInicio: '2026-09-01',
-  fechaLimite: '2027-03-01',
+  fechaLimite: '',
   horasObjetivo: 500,
 }
 
