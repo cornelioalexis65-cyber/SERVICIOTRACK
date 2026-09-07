@@ -157,6 +157,20 @@ function App() {
         abierto={modalReporteAbierto}
         onCerrar={() => setModalReporteAbierto(false)}
       />
+
+      {/* Botón flotante móvil para Reporte PDF */}
+      {!modalReporteAbierto && !modalPerfilAbierto && (
+        <button
+          type="button"
+          id="fab-reporte"
+          onClick={() => setModalReporteAbierto(true)}
+          title="Generar Reporte PDF"
+          className="fixed bottom-5 right-5 z-40 sm:hidden flex items-center gap-2 px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-2xl shadow-indigo-500/40 transition-all active:scale-95"
+        >
+          <span className="text-lg">📄</span>
+          <span>Reporte PDF</span>
+        </button>
+      )}
     </div>
   )
 }
