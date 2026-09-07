@@ -7,8 +7,78 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #0f172a; /* slate-900 */
-  color: #f8fafc; /* slate-50 */
+  background-color: #0f172a;
+  color: #f8fafc;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ===== ESTILOS DE IMPRESIÓN ===== */
+@media print {
+  /* Configurar tamaño de página */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+
+  /* Ocultar el cuerpo completo y solo mostrar el modal de reporte */
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* El overlay del modal: quitar estilos de overlay */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    z-index: auto !important;
+  }
+
+  /* La tarjeta modal: quitar bordes decorativos */
+  .fixed.inset-0 > div {
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    space-y: 0 !important;
+  }
+
+  /* Ocultar elementos marcados como print:hidden */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Evitar saltos de página dentro de filas de tabla */
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ajustar el contenido blanco del reporte */
+  .bg-white {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Quitar overflow de la tabla */
+  .overflow-hidden {
+    overflow: visible !important;
+  }
 }

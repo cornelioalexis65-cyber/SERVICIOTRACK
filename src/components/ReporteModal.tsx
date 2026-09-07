@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import type { Registro, PerfilEstudiante } from '../types/registro'
 
 interface ReporteModalProps {
@@ -46,10 +46,53 @@ export function ReporteModal({
   const horasTotalesGeneral = registros.reduce((total, r) => total + r.horas, 0)
   const porcentajeTotal = Math.min((horasTotalesGeneral / totalHours) * 100, 100)
 
+  const contenidoRef = useRef<HTMLDivElement>(null)
+
   if (!abierto) return null
 
   const handleImprimir = () => {
-    window.print()
+    const contenido = contenidoRef.current
+    if (!contenido) return
+
+    // Abrir ventana limpia solo con el reporte y fondo blanco
+    const ventana = window.open('', '_blank', 'width=900,height=700')
+    if (!ventana) {
+      window.print()
+      return
+    }
+
+    ventana.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Reporte ServicioTrack</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm 15mm; }
+          * { box-sizing: border-box; }
+          body { font-family: system-ui, sans-serif; background: white; color: black; margin: 0; padding: 0; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th, td { padding: 6px 8px; border-bottom: 1px solid #cbd5e1; text-align: left; }
+          th { background: #f1f5f9; font-weight: 700; text-transform: uppercase; font-size: 9px; color: #475569; }
+          tr { page-break-inside: avoid; }
+          .grid { display: grid; }
+          .grid-cols-2 { grid-template-columns: 1fr 1fr; }
+          .grid-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+          .gap-3 { gap: 10px; }
+          .gap-12 { gap: 40px; }
+          h2 { margin: 0; font-size: 18px; text-transform: uppercase; }
+          .text-indigo-600 { color: #4f46e5; }
+        </style>
+      </head>
+      <body>${contenido.innerHTML}</body>
+      </html>
+    `)
+    ventana.document.close()
+    ventana.focus()
+    setTimeout(() => {
+      ventana.print()
+      ventana.close()
+    }, 400)
   }
 
   return (
@@ -127,7 +170,7 @@ export function ReporteModal({
         </div>
 
         {/* CONTENIDO DEL REPORTE IMPRIMIBLE */}
-        <div className="bg-white text-slate-900 p-6 sm:p-10 rounded-xl shadow-inner space-y-6 text-xs sm:text-sm print:m-0 print:p-0 print:shadow-none">
+        <div ref={contenidoRef} className="bg-white text-slate-900 p-6 sm:p-10 rounded-xl shadow-inner space-y-6 text-xs sm:text-sm">
           {/* Encabezado Institucional */}
           <div className="border-b-2 border-slate-900 pb-4 flex items-center justify-between">
             <div>
