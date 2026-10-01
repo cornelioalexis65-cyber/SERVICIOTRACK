@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Registro } from '../types/registro'
 
 interface HistorialProps {
@@ -11,6 +12,11 @@ export function Historial({
   onEditar,
   onEliminar,
 }: HistorialProps) {
+  const [mostrarTodos, setMostrarTodos] = useState(false)
+
+  const registrosVisibles = mostrarTodos ? registros : registros.slice(0, 3)
+  const hayMas = registros.length > 3
+
   return (
     <section className="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 sm:p-8 shadow-xl space-y-6">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -36,42 +42,64 @@ export function Historial({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {registros.map((registro) => (
-            <div
-              key={registro.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors"
-            >
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                    {registro.fecha}
-                  </span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    +{registro.horas} {registro.horas === 1 ? 'hora' : 'horas'}
-                  </span>
+        <div className="space-y-4">
+          <div className="space-y-3">
+            {registrosVisibles.map((registro) => (
+              <div
+                key={registro.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors"
+              >
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                      {registro.fecha}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      +{registro.horas} {registro.horas === 1 ? 'hora' : 'horas'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-200 font-medium break-words">
+                    {registro.actividad}
+                  </p>
                 </div>
-                <p className="text-sm text-slate-200 font-medium break-words">
-                  {registro.actividad}
-                </p>
-              </div>
 
-              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                <button
-                  onClick={() => onEditar(registro)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => onEliminar(registro.id)}
-                  className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/20 transition-colors cursor-pointer"
-                >
-                  Eliminar
-                </button>
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                  <button
+                    onClick={() => onEditar(registro)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => onEliminar(registro.id)}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/20 transition-colors cursor-pointer"
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {hayMas && (
+            <div className="pt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setMostrarTodos(!mostrarTodos)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-all duration-200 shadow-sm hover:shadow cursor-pointer"
+              >
+                <span>{mostrarTodos ? 'Ver menos' : 'Ver más'}</span>
+                <svg
+                  className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${mostrarTodos ? 'rotate-180' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
             </div>
-          ))}
+          )}
         </div>
       )}
     </section>
