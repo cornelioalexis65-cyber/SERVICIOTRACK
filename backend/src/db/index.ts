@@ -39,14 +39,28 @@ export async function initDB() {
         institucion TEXT NOT NULL DEFAULT '',
         fecha_inicio TEXT NOT NULL DEFAULT '',
         fecha_limite TEXT NOT NULL DEFAULT '',
-        horas_objetivo REAL NOT NULL DEFAULT 500
+        horas_objetivo REAL NOT NULL DEFAULT 500,
+        programa TEXT NOT NULL DEFAULT '',
+        supervisor TEXT NOT NULL DEFAULT ''
       );
     `)
 
+    // Migraciones automáticas seguras para bases de datos existentes
+    try {
+      await client.execute(`ALTER TABLE perfil_estudiante ADD COLUMN programa TEXT NOT NULL DEFAULT '';`)
+    } catch {
+      // La columna ya existe
+    }
+    try {
+      await client.execute(`ALTER TABLE perfil_estudiante ADD COLUMN supervisor TEXT NOT NULL DEFAULT '';`)
+    } catch {
+      // La columna ya existe
+    }
+
     // Insertar registro de perfil inicial si no existe
     await client.execute(`
-      INSERT OR IGNORE INTO perfil_estudiante (id, nombre, matricula, carrera, institucion, fecha_inicio, fecha_limite, horas_objetivo)
-      VALUES (1, 'Alexis', '2026-ST', 'Ingeniería en Sistemas', 'Institución Educativa', '2026-09-01', '2027-03-01', 500);
+      INSERT OR IGNORE INTO perfil_estudiante (id, nombre, matricula, carrera, institucion, fecha_inicio, fecha_limite, horas_objetivo, programa, supervisor)
+      VALUES (1, 'Alexis', '2026-ST', 'Ingeniería en Sistemas', 'Institución Educativa', '2026-09-01', '2027-03-01', 500, '', '');
     `)
 
     console.log('✅ Base de datos inicializada correctamente')

@@ -18,6 +18,8 @@ export const perfilTable = sqliteTable('perfil_estudiante', {
   fechaInicio: text('fecha_inicio').notNull().default(''),
   fechaLimite: text('fecha_limite').notNull().default(''),
   horasObjetivo: real('horas_objetivo').notNull().default(500),
+  programa: text('programa').notNull().default(''),
+  supervisor: text('supervisor').notNull().default(''),
 })
 
 export type RegistroDB = typeof registrosTable.$inferSelect

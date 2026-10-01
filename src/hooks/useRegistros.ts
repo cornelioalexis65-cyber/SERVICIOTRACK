@@ -21,6 +21,8 @@ const PERFIL_DEFAULT: PerfilEstudiante = {
   fechaInicio: '2026-09-01',
   fechaLimite: '',
   horasObjetivo: 500,
+  programa: '',
+  supervisor: '',
 }
 
 export function useRegistros() {
@@ -45,8 +47,11 @@ export function useRegistros() {
     const perfilGuardado = localStorage.getItem(PROFILE_KEY)
     if (perfilGuardado) {
       try {
-        const parseadoPerfil: PerfilEstudiante = JSON.parse(perfilGuardado)
-        setPerfil(parseadoPerfil)
+        const parseadoPerfil = JSON.parse(perfilGuardado)
+        setPerfil({
+          ...PERFIL_DEFAULT,
+          ...parseadoPerfil,
+        })
       } catch (e) {
         console.error('Error al leer localStorage de perfil:', e)
       }
@@ -72,8 +77,26 @@ export function useRegistros() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(registrosRemotos))
 
         if (perfilRemoto) {
-          setPerfil(perfilRemoto)
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(perfilRemoto))
+          const guardadoActual = localStorage.getItem(PROFILE_KEY)
+          const localActual: Partial<PerfilEstudiante> | null = guardadoActual ? JSON.parse(guardadoActual) : null
+
+          // Si el usuario ya personalizó su nombre/matrícula/programa en local, conservamos esos datos
+          const perfilCombinado: PerfilEstudiante = {
+            ...PERFIL_DEFAULT,
+            ...perfilRemoto,
+            ...(localActual?.nombre ? { nombre: localActual.nombre } : {}),
+            ...(localActual?.matricula ? { matricula: localActual.matricula } : {}),
+            ...(localActual?.programa ? { programa: localActual.programa } : {}),
+            ...(localActual?.supervisor ? { supervisor: localActual.supervisor } : {}),
+          }
+
+          setPerfil(perfilCombinado)
+          localStorage.setItem(PROFILE_KEY, JSON.stringify(perfilCombinado))
+
+          // Si el backend tenía datos por defecto o incompletos y local tiene datos reales, actualizamos el backend
+          if (localActual?.nombre && (!perfilRemoto.nombre || perfilRemoto.nombre === 'Estudiante')) {
+            updatePerfilApi(perfilCombinado).catch(() => null)
+          }
         }
       } catch (error) {
         console.warn('Error al sincronizar con el backend:', error)
@@ -251,12 +274,11 @@ export function useRegistros() {
     setPerfil(nuevoPerfil)
     localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
 
-    if (backendConectado) {
-      try {
-        await updatePerfilApi(nuevoPerfil)
-      } catch (err) {
-        console.warn('Error al actualizar perfil en backend:', err)
-      }
+    try {
+      await updatePerfilApi(nuevoPerfil)
+      setBackendConectado(true)
+    } catch (err) {
+      console.warn('Error al actualizar perfil en backend:', err)
     }
   }
 

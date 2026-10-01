@@ -155,6 +155,14 @@ export function ReporteModal({
             <span>Carrera</span>
             <strong>${perfil.carrera || 'N/A'}</strong>
           </div>
+          <div class="ficha-campo">
+            <span>Programa</span>
+            <strong>${perfil.programa || 'No especificado'}</strong>
+          </div>
+          <div class="ficha-campo">
+            <span>Supervisor</span>
+            <strong>${perfil.supervisor || 'No especificado'}</strong>
+          </div>
           <div class="ficha-campo wide">
             <span>Institución</span>
             <strong>${perfil.institucion || 'N/A'}</strong>
@@ -195,8 +203,8 @@ export function ReporteModal({
             <div class="firma-label">Firma del Alumno</div>
           </div>
           <div>
-            <div class="firma-linea">Responsable de Servicio Social</div>
-            <div class="firma-label">Sello y Firma Institucional</div>
+            <div class="firma-linea">${perfil.supervisor || 'Responsable de Servicio Social'}</div>
+            <div class="firma-label">${perfil.supervisor ? 'Supervisor / Responsable' : 'Sello y Firma Institucional'}</div>
           </div>
         </div>
 
@@ -309,11 +317,19 @@ export function ReporteModal({
                   <span className="block text-[10px] uppercase font-bold text-slate-500">Carrera</span>
                   <strong className="text-slate-900">{perfil.carrera || 'N/A'}</strong>
                 </div>
-                <div className="sm:col-span-2">
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-slate-500">Programa</span>
+                  <strong className="text-slate-900">{perfil.programa || 'No especificado'}</strong>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-slate-500">Supervisor</span>
+                  <strong className="text-slate-900">{perfil.supervisor || 'No especificado'}</strong>
+                </div>
+                <div>
                   <span className="block text-[10px] uppercase font-bold text-slate-500">Institución</span>
                   <strong className="text-slate-900">{perfil.institucion || 'N/A'}</strong>
                 </div>
-                <div>
+                <div className="col-span-2 sm:col-span-3">
                   <span className="block text-[10px] uppercase font-bold text-slate-500">Progreso Global</span>
                   <strong className="text-indigo-600 font-bold">{horasTotalesGeneral} / {totalHours} hrs ({porcentajeTotal.toFixed(1)}%)</strong>
                 </div>
@@ -367,9 +383,11 @@ export function ReporteModal({
                 </div>
                 <div>
                   <div className="border-t border-slate-900 pt-2 font-bold text-slate-800">
-                    Responsable de Servicio Social
+                    {perfil.supervisor || 'Responsable de Servicio Social'}
                   </div>
-                  <p className="text-[10px] text-slate-500">Sello y Firma Institucional</p>
+                  <p className="text-[10px] text-slate-500">
+                    {perfil.supervisor ? 'Supervisor / Responsable' : 'Sello y Firma Institucional'}
+                  </p>
                 </div>
               </div>
             </div>

@@ -16,6 +16,8 @@ export async function getPerfil(_req: Request, res: Response): Promise<void> {
         fechaInicio: '',
         fechaLimite: '',
         horasObjetivo: 500,
+        programa: '',
+        supervisor: '',
       })
       return
     }
@@ -29,7 +31,7 @@ export async function getPerfil(_req: Request, res: Response): Promise<void> {
 
 export async function updatePerfil(req: Request, res: Response): Promise<void> {
   try {
-    const { nombre, matricula, carrera, institucion, fechaInicio, fechaLimite, horasObjetivo } = req.body
+    const { nombre, matricula, carrera, institucion, fechaInicio, fechaLimite, horasObjetivo, programa, supervisor } = req.body
 
     const [perfilActualizado] = await db
       .insert(perfilTable)
@@ -42,6 +44,8 @@ export async function updatePerfil(req: Request, res: Response): Promise<void> {
         fechaInicio: fechaInicio || '',
         fechaLimite: fechaLimite || '',
         horasObjetivo: Number(horasObjetivo) || 500,
+        programa: programa || '',
+        supervisor: supervisor || '',
       })
       .onConflictDoUpdate({
         target: perfilTable.id,
@@ -53,6 +57,8 @@ export async function updatePerfil(req: Request, res: Response): Promise<void> {
           fechaInicio: fechaInicio || '',
           fechaLimite: fechaLimite || '',
           horasObjetivo: Number(horasObjetivo) || 500,
+          programa: programa || '',
+          supervisor: supervisor || '',
         },
       })
       .returning()

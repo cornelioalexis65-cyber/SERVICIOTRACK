@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { PerfilEstudiante } from '../types/registro'
 
 interface PerfilModalProps {
@@ -16,6 +16,12 @@ export function PerfilModal({
 }: PerfilModalProps) {
   const [formData, setFormData] = useState<PerfilEstudiante>(perfil)
 
+  useEffect(() => {
+    if (abierto) {
+      setFormData(perfil)
+    }
+  }, [perfil, abierto])
+
   if (!abierto) return null
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -26,7 +32,7 @@ export function PerfilModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl space-y-6">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div>
             <h3 className="text-xl font-bold text-white">Perfil del Estudiante</h3>
@@ -36,7 +42,7 @@ export function PerfilModal({
           </div>
           <button
             onClick={onCerrar}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             ✕
           </button>
@@ -51,9 +57,10 @@ export function PerfilModal({
               <input
                 type="text"
                 required
+                placeholder="Ej. Alexis Cornelio"
                 value={formData.nombre}
                 onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
             </div>
 
@@ -63,9 +70,38 @@ export function PerfilModal({
               </label>
               <input
                 type="text"
+                placeholder="Ej. 2026-ST-001"
                 value={formData.matricula}
                 onChange={(e) => setFormData({ ...formData, matricula: e.target.value })}
-                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Programa de Servicio Social
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. Soporte Técnico e Infraestructura"
+                value={formData.programa || ''}
+                onChange={(e) => setFormData({ ...formData, programa: e.target.value })}
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Nombre del Supervisor / Responsable
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. Ing. Juan Pérez López"
+                value={formData.supervisor || ''}
+                onChange={(e) => setFormData({ ...formData, supervisor: e.target.value })}
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
             </div>
           </div>
@@ -79,7 +115,7 @@ export function PerfilModal({
                 type="text"
                 value={formData.carrera}
                 onChange={(e) => setFormData({ ...formData, carrera: e.target.value })}
-                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
             </div>
 
@@ -91,7 +127,7 @@ export function PerfilModal({
                 type="text"
                 value={formData.institucion}
                 onChange={(e) => setFormData({ ...formData, institucion: e.target.value })}
-                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
             </div>
           </div>

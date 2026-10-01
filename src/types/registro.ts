@@ -14,4 +14,6 @@ export interface PerfilEstudiante {
   fechaInicio: string
   fechaLimite: string
   horasObjetivo: number
+  programa: string
+  supervisor: string
 }
