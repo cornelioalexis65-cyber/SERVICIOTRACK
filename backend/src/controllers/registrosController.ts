@@ -1,9 +1,39 @@
 import type { Request, Response } from 'express'
 import { eq, desc } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { registrosTable } from '../db/schema.js'
+import { registrosTable, perfilTable } from '../db/schema.js'
 
-const TOTAL_HOURS = 500
+const TOTAL_HOURS_FALLBACK = 500
+const EXPRESION_FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Verifica que la fecha tenga formato YYYY-MM-DD y sea una fecha real
+ * (rechaza mes 13, día 32, etc.)
+ */
+function fechaValida(fecha: unknown): fecha is string {
+  if (typeof fecha !== 'string' || !EXPRESION_FECHA.test(fecha)) return false
+  const [anio, mes, dia] = fecha.split('-').map(Number)
+  const candidato = new Date(anio, mes - 1, dia)
+  return (
+    candidato.getFullYear() === anio &&
+    candidato.getMonth() === mes - 1 &&
+    candidato.getDate() === dia
+  )
+}
+
+/**
+ * Lee las horas objetivo del perfil del estudiante.
+ * Si el perfil no existe o el valor es inválido, usa el respaldo de 500h.
+ */
+async function obtenerLimiteHoras(): Promise<number> {
+  try {
+    const [perfil] = await db.select().from(perfilTable).where(eq(perfilTable.id, 1))
+    const valor = Number(perfil?.horasObjetivo)
+    return Number.isFinite(valor) && valor > 0 ? valor : TOTAL_HOURS_FALLBACK
+  } catch {
+    return TOTAL_HOURS_FALLBACK
+  }
+}
 
 /**
  * Obtener todos los registros ordenados por fecha descendente
@@ -35,6 +65,11 @@ export async function createRegistro(req: Request, res: Response): Promise<void>
       return
     }
 
+    if (!fechaValida(fecha)) {
+      res.status(400).json({ error: 'La fecha debe ser válida y estar en formato YYYY-MM-DD.' })
+      return
+    }
+
     const numHoras = Number(horas)
 
     // 2. Rango de horas
@@ -55,13 +90,14 @@ export async function createRegistro(req: Request, res: Response): Promise<void>
       return
     }
 
-    // 4. Validar tope de 500 horas acumuladas
+    // 4. Validar tope acumulado contra las horas objetivo del perfil
+    const limiteHoras = await obtenerLimiteHoras()
     const todos = await db.select().from(registrosTable)
     const horasAcumuladas = todos.reduce((total, r) => total + r.horas, 0)
 
-    if (horasAcumuladas + numHoras > TOTAL_HOURS) {
+    if (horasAcumuladas + numHoras > limiteHoras) {
       res.status(400).json({
-        error: `No puedes superar el límite total de ${TOTAL_HOURS} horas de servicio social. (Llevas ${horasAcumuladas} hrs)`,
+        error: `No puedes superar el límite total de ${limiteHoras} horas de servicio social. (Llevas ${horasAcumuladas} hrs)`,
       })
       return
     }
@@ -101,6 +137,11 @@ export async function updateRegistro(req: Request, res: Response): Promise<void>
       return
     }
 
+    if (!fechaValida(fecha)) {
+      res.status(400).json({ error: 'La fecha debe ser válida y estar en formato YYYY-MM-DD.' })
+      return
+    }
+
     const numHoras = Number(horas)
     if (isNaN(numHoras) || numHoras <= 0) {
       res.status(400).json({ error: 'El número de horas debe ser mayor a 0.' })
@@ -129,15 +170,17 @@ export async function updateRegistro(req: Request, res: Response): Promise<void>
       return
     }
 
-    // Validar tope de 500 horas descontando las horas anteriores del registro
+    // Validar tope contra las horas objetivo del perfil,
+    // descontando las horas anteriores del registro
+    const limiteHoras = await obtenerLimiteHoras()
     const todos = await db.select().from(registrosTable)
     const horasAcumuladasSinActual = todos
       .filter((r) => r.id !== id)
       .reduce((total, r) => total + r.horas, 0)
 
-    if (horasAcumuladasSinActual + numHoras > TOTAL_HOURS) {
+    if (horasAcumuladasSinActual + numHoras > limiteHoras) {
       res.status(400).json({
-        error: `No puedes superar el límite de ${TOTAL_HOURS} horas de servicio social.`,
+        error: `No puedes superar el límite de ${limiteHoras} horas de servicio social.`,
       })
       return
     }
