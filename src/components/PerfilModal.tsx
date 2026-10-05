@@ -1,27 +1,53 @@
 import { useState, useRef } from 'react'
 import type { PerfilEstudiante, Registro } from '../types/registro'
+import type { DocumentoServicio } from '../types/documento'
 import { exportarCSV, exportarJSON, parsearBackupJSON } from '../utils/exportUtils'
+import { DocumentosPanel } from './DocumentosPanel'
 
 interface PerfilModalProps {
   perfil: PerfilEstudiante
   registros: Registro[]
+  documentos: DocumentoServicio[]
   abierto: boolean
   onCerrar: () => void
   onGuardar: (nuevoPerfil: PerfilEstudiante) => void
   onRestaurarBackup: (nuevosRegistros: Registro[], nuevoPerfil?: PerfilEstudiante) => void
   onNotificar?: (mensaje: string, tipo: 'exito' | 'error' | 'info' | 'advertencia') => void
+  // Documentos
+  documentosCargando?: boolean
+  documentosBackendConectado?: boolean
+  documentosSincronizando?: boolean
+  documentosPendientes?: number
+  onSubirDocumento?: (datos: any) => Promise<{ exito: boolean; error?: string }>
+  onActualizarDocumento?: (id: number, datos: any) => Promise<{ exito: boolean; error?: string }>
+  onEliminarDocumento?: (id: number) => Promise<void>
+  onCambiarEstadoDocumento?: (id: number, estado: any) => Promise<{ exito: boolean; error?: string }>
+  onDescargarDocumento?: (id: number) => Promise<void>
+  onSincronizarDocumentos?: () => void
 }
 
 export function PerfilModal({
   perfil,
   registros,
+  documentos,
   abierto,
   onCerrar,
   onGuardar,
   onRestaurarBackup,
   onNotificar,
+  // Documentos
+  documentosCargando = false,
+  documentosBackendConectado = false,
+  documentosSincronizando = false,
+  documentosPendientes = 0,
+  onSubirDocumento,
+  onActualizarDocumento,
+  onEliminarDocumento,
+  onCambiarEstadoDocumento,
+  onDescargarDocumento,
+  onSincronizarDocumentos,
 }: PerfilModalProps) {
-  const [pestanaActiva, setPestanaActiva] = useState<'perfil' | 'respaldo'>('perfil')
+  const [pestanaActiva, setPestanaActiva] = useState<'perfil' | 'respaldo' | 'documentos'>('perfil')
   const [formData, setFormData] = useState<PerfilEstudiante>(perfil)
   const [prevPerfil, setPrevPerfil] = useState(perfil)
 
@@ -120,6 +146,17 @@ export function PerfilModal({
             </button>
             <button
               type="button"
+              onClick={() => setPestanaActiva('documentos')}
+              className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer text-center ${
+                pestanaActiva === 'documentos'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📄 Documentos
+            </button>
+            <button
+              type="button"
               onClick={() => setPestanaActiva('respaldo')}
               className={`flex-1 py-2 px-3 rounded-lg transition-colors cursor-pointer text-center ${
                 pestanaActiva === 'respaldo'
@@ -127,7 +164,7 @@ export function PerfilModal({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              💾 Copia de Seguridad & Datos
+              💾 Copia de Seguridad
             </button>
           </div>
         </div>
@@ -274,6 +311,21 @@ export function PerfilModal({
               </button>
             </div>
           </form>
+        ) : pestanaActiva === 'documentos' ? (
+          <DocumentosPanel
+            documentos={documentos}
+            cargando={documentosCargando}
+            backendConectado={documentosBackendConectado}
+            sincronizando={documentosSincronizando}
+            pendientes={documentosPendientes}
+            onSubirDocumento={onSubirDocumento!}
+            onActualizarDocumento={onActualizarDocumento!}
+            onEliminarDocumento={onEliminarDocumento!}
+            onCambiarEstado={onCambiarEstadoDocumento!}
+            onDescargarDocumento={onDescargarDocumento!}
+            onSincronizar={onSincronizarDocumentos!}
+            onNotificar={onNotificar!}
+          />
         ) : (
           /* Pestaña de Respaldo y Exportación */
           <div className="space-y-5">

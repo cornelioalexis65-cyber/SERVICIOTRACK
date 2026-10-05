@@ -22,6 +22,24 @@ export const perfilTable = sqliteTable('perfil_estudiante', {
   supervisor: text('supervisor').notNull().default(''),
 })
 
+export const documentosTable = sqliteTable('documentos_servicio', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tipo: text('tipo').notNull(),
+  periodo: text('periodo'),
+  estado: text('estado').notNull().default('pendiente'),
+  fechaLimite: text('fecha_limite').notNull(),
+  fechaEntrega: text('fecha_entrega'),
+  nombreArchivo: text('nombre_archivo').notNull(),
+  mimeType: text('mime_type').notNull(),
+  tamano: integer('tamano').notNull(),
+  rutaArchivo: text('ruta_archivo').notNull(),        // ruta física en servidor
+  notas: text('notas'),
+  creadoEn: text('creado_en').default(sql`CURRENT_TIMESTAMP`),
+  actualizadoEn: text('actualizado_en').default(sql`CURRENT_TIMESTAMP`),
+})
+
 export type RegistroDB = typeof registrosTable.$inferSelect
 export type NuevoRegistroDB = typeof registrosTable.$inferInsert
 export type PerfilDB = typeof perfilTable.$inferSelect
+export type DocumentoDB = typeof documentosTable.$inferSelect
+export type NuevoDocumentoDB = typeof documentosTable.$inferInsert

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Registro, PerfilEstudiante } from './types/registro'
+// import type { DocumentoServicio } from './types/documento' // used via documentos prop
 import { useRegistros } from './hooks/useRegistros'
+import { useDocumentos } from './hooks/useDocumentos'
 import { Header } from './components/Header'
 import { InstalarAppBanner } from './components/InstalarAppBanner'
 import { AlertasBanner } from './components/AlertasBanner'
@@ -37,6 +39,20 @@ function App() {
     restaurarBackup,
     sincronizarConBackend,
   } = useRegistros()
+
+  const {
+    documentos,
+    cargando: documentosCargando,
+    backendConectado: documentosBackendConectado,
+    sincronizando: documentosSincronizando,
+    pendientes: documentosPendientes,
+    subirDocumento,
+    actualizarDocumento,
+    eliminarDocumento,
+    cambiarEstado,
+    descargarDocumento,
+    sincronizarConBackend: sincronizarDocumentos,
+  } = useDocumentos()
 
   // Sistema de Notificaciones Toasts
   const [toasts, setToasts] = useState<ToastMensaje[]>([])
@@ -150,7 +166,7 @@ function App() {
   }
 
   const handleReconectar = async () => {
-    await sincronizarConBackend()
+    await Promise.all([sincronizarConBackend(), sincronizarDocumentos()])
     agregarToast('Sincronización ejecutada', 'info')
   }
 
@@ -183,6 +199,7 @@ function App() {
           totalHours={totalHours}
           diasRestantesLimite={diasRestantesLimite}
           ritmoRecomendado={ritmoRecomendado}
+          documentos={documentos}
         />
 
         <Dashboard
@@ -220,11 +237,23 @@ function App() {
       <PerfilModal
         perfil={perfil}
         registros={registros}
+        documentos={documentos}
         abierto={modalPerfilAbierto}
         onCerrar={() => setModalPerfilAbierto(false)}
         onGuardar={actualizarPerfil}
         onRestaurarBackup={handleRestaurarBackup}
         onNotificar={(mensaje, tipo) => agregarToast(mensaje, tipo)}
+        // Documentos
+        documentosCargando={documentosCargando}
+        documentosBackendConectado={documentosBackendConectado}
+        documentosSincronizando={documentosSincronizando}
+        documentosPendientes={documentosPendientes}
+        onSubirDocumento={subirDocumento}
+        onActualizarDocumento={actualizarDocumento}
+        onEliminarDocumento={eliminarDocumento}
+        onCambiarEstadoDocumento={cambiarEstado}
+        onDescargarDocumento={descargarDocumento}
+        onSincronizarDocumentos={sincronizarDocumentos}
       />
 
       <ReporteModal

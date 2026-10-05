@@ -63,6 +63,25 @@ export async function initDB() {
       VALUES (1, 'Alexis', '2026-ST', 'Ingeniería en Sistemas', 'Institución Educativa', '2026-09-01', '2027-03-01', 500, '', '');
     `)
 
+    // Tabla de documentos de servicio
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS documentos_servicio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL,
+        periodo TEXT,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        fecha_limite TEXT NOT NULL,
+        fecha_entrega TEXT,
+        nombre_archivo TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        tamano INTEGER NOT NULL,
+        ruta_archivo TEXT NOT NULL,
+        notas TEXT,
+        creado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+        actualizado_en TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+
     console.log('✅ Base de datos inicializada correctamente')
   } catch (error) {
     console.error('❌ Error al inicializar la base de datos:', error)

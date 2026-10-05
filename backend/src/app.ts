@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { registrosRouter } from './routes/registrosRoutes.js'
 import { perfilRouter } from './routes/perfilRoutes.js'
+import { documentosRouter } from './routes/documentosRoutes.js'
 
 export const app = express()
 
@@ -12,6 +13,7 @@ app.use(express.json())
 // Rutas de la API
 app.use('/api/registros', registrosRouter)
 app.use('/api/perfil', perfilRouter)
+app.use('/api/documentos', documentosRouter)
 
 // Ruta de comprobación de salud del servidor (Health Check)
 app.get('/api/health', (_req, res) => {
