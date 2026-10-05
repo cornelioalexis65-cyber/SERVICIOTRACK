@@ -53,12 +53,35 @@ const PERFIL_DEFAULT: PerfilEstudiante = {
 }
 
 export function useRegistros() {
-  const [registros, setRegistros] = useState<Registro[]>([])
-  const [perfil, setPerfil] = useState<PerfilEstudiante>(PERFIL_DEFAULT)
-  const [cargando, setCargando] = useState(true)
+  const [registros, setRegistros] = useState<Registro[]>(() => {
+    try {
+      const guardados = localStorage.getItem(STORAGE_KEY)
+      return guardados ? JSON.parse(guardados) : []
+    } catch (e) {
+      console.error('Error al leer localStorage de registros:', e)
+      return []
+    }
+  })
+
+  const [perfil, setPerfil] = useState<PerfilEstudiante>(() => {
+    try {
+      const perfilGuardado = localStorage.getItem(PROFILE_KEY)
+      if (perfilGuardado) {
+        return {
+          ...PERFIL_DEFAULT,
+          ...JSON.parse(perfilGuardado),
+        }
+      }
+    } catch (e) {
+      console.error('Error al leer localStorage de perfil:', e)
+    }
+    return PERFIL_DEFAULT
+  })
+
+  const [cargando] = useState(false)
   const [backendConectado, setBackendConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
-  const [pendientes, setPendientes] = useState(0)
+  const [pendientes, setPendientes] = useState(() => leerCola().length)
 
   // Siempre el estado más reciente disponible dentro de callbacks
   // memoizados (evita cerrar sobre valores obsoletos y loops de sync).
@@ -73,35 +96,6 @@ export function useRegistros() {
     guardarCola(cola)
     setPendientes(cola.length)
   }
-
-  // 1. Cargar datos locales de inmediato (Offline-First)
-  useEffect(() => {
-    const guardados = localStorage.getItem(STORAGE_KEY)
-    if (guardados) {
-      try {
-        const parseados: Registro[] = JSON.parse(guardados)
-        setRegistros(parseados)
-      } catch (e) {
-        console.error('Error al leer localStorage de registros:', e)
-      }
-    }
-
-    const perfilGuardado = localStorage.getItem(PROFILE_KEY)
-    if (perfilGuardado) {
-      try {
-        const parseadoPerfil = JSON.parse(perfilGuardado)
-        setPerfil({
-          ...PERFIL_DEFAULT,
-          ...parseadoPerfil,
-        })
-      } catch (e) {
-        console.error('Error al leer localStorage de perfil:', e)
-      }
-    }
-
-    setPendientes(leerCola().length)
-    setCargando(false)
-  }, [])
 
   /**
    * Aplica la cola de operaciones pendientes contra el backend, en orden.
@@ -421,6 +415,47 @@ export function useRegistros() {
     }
   }
 
+  const restaurarBackup = async (
+    nuevosRegistros: Registro[],
+    nuevoPerfil?: PerfilEstudiante
+  ): Promise<void> => {
+    // 1. Reemplazar registros localmente
+    setRegistros(nuevosRegistros)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevosRegistros))
+
+    // 2. Si se incluye perfil en el respaldo, actualizarlo
+    if (nuevoPerfil) {
+      setPerfil(nuevoPerfil)
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
+    }
+
+    // 3. Sincronizar o encolar para el backend
+    if (backendConectado) {
+      if (nuevoPerfil) {
+        updatePerfilApi(nuevoPerfil).catch(() => null)
+      }
+      for (const reg of nuevosRegistros) {
+        createRegistroApi({
+          fecha: reg.fecha,
+          horas: reg.horas,
+          actividad: reg.actividad,
+        }).catch(() => null)
+      }
+    } else {
+      for (const reg of nuevosRegistros) {
+        encolarOperacion({
+          tipo: 'crear',
+          localId: reg.id,
+          datos: {
+            fecha: reg.fecha,
+            horas: reg.horas,
+            actividad: reg.actividad,
+          },
+        })
+      }
+    }
+  }
+
   return {
     registros,
     registrosOrdenados,
@@ -442,6 +477,7 @@ export function useRegistros() {
     actualizarRegistro,
     eliminarRegistro,
     actualizarPerfil,
+    restaurarBackup,
     sincronizarConBackend,
   }
 }

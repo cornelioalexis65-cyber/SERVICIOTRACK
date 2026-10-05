@@ -9,7 +9,8 @@
 * 📊 **Dashboard y Métricas:** Visualización de horas realizadas, horas restantes, porcentaje de avance, días acumulados, promedio diario y fecha del último registro.
 * 📈 **Barra de Progreso Interactiva:** Indicador visual animado con marcadores de hitos (0h, 125h, 250h, 375h, 500h).
 * 📝 **Registro de Actividades:** Formulario para altas y edición de actividades con validaciones estrictas (sin horas negativas, máximo 24h/día, tope de meta y bloqueo de fechas futuras).
-* 📋 **Historial Cronológico:** Vista feed de actividades con acciones rápidas de edición y eliminación.
+* 📋 **Historial Cronológico con Búsqueda:** Vista feed de actividades con buscador en vivo, filtro por mes, cálculo de horas filtradas y exportación rápida.
+* 💾 **Respaldo y Exportación de Datos:** Descarga de reportes en Excel (CSV con acumulados) y respaldo completo en JSON con herramienta de importación y restauración.
 * 👤 **Perfil del Estudiante:** Configuración de datos institucionales (Nombre, Matrícula, Carrera, Institución, Fechas límite y Horas objetivo).
 * 💡 **Alertas y Fechas Límite:** Cálculo automático de días restantes hasta la fecha de entrega y ritmo recomendado en horas/día.
 * 📄 **Generador de Reportes PDF:** Creación de reportes institucionales por periodo o rango de fechas con formato imprimible y área de firmas de autorización.

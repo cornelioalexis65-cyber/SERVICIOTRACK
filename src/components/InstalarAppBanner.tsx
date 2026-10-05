@@ -8,27 +8,28 @@ interface BeforeInstallPromptEvent extends Event {
 export function InstalarAppBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [esInstalable, setEsInstalable] = useState(false)
-  const [esIOS, setEsIOS] = useState(false)
   const [mostrandoGuiaIOS, setMostrandoGuiaIOS] = useState(false)
-  const [yaInstalada, setYaInstalada] = useState(false)
 
-  useEffect(() => {
-    // Detectar si ya está en modo standalone (instalada)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+  // Inicialización directa y sin efectos secundarios (evita re-renders en cascada)
+  const [yaInstalada] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
       // @ts-expect-error - navigator.standalone es una propiedad específica de iOS
       Boolean(navigator.standalone)
+    )
+  })
 
-    if (isStandalone) {
-      setYaInstalada(true)
-      return
-    }
-
-    // Detectar iOS
+  const [esIOS] = useState(() => {
+    if (typeof window === 'undefined') return false
     const userAgent = window.navigator.userAgent.toLowerCase()
-    const isIosDevice = /iphone|ipad|ipod/.test(userAgent)
-    setEsIOS(isIosDevice)
+    return /iphone|ipad|ipod/.test(userAgent)
+  })
 
-    // Capturar evento de instalación para Android / Chrome
+  useEffect(() => {
+    if (yaInstalada) return
+
+    // Capturar evento de instalación para Android / Chrome / Edge
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
@@ -40,7 +41,7 @@ export function InstalarAppBanner() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     }
-  }, [])
+  }, [yaInstalada])
 
   if (yaInstalada) {
     return null
