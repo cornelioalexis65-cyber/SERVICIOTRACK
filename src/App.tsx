@@ -3,6 +3,7 @@ import type { Registro, PerfilEstudiante } from './types/registro'
 // import type { DocumentoServicio } from './types/documento' // used via documentos prop
 import { useRegistros } from './hooks/useRegistros'
 import { useDocumentos } from './hooks/useDocumentos'
+import { usePwaUpdate } from './hooks/usePwaUpdate'
 import { Header } from './components/Header'
 import { InstalarAppBanner } from './components/InstalarAppBanner'
 import { AlertasBanner } from './components/AlertasBanner'
@@ -54,15 +55,22 @@ function App() {
     sincronizarConBackend: sincronizarDocumentos,
   } = useDocumentos()
 
+  // PWA Update Detection
+  usePwaUpdate((reload) => {
+    agregarToast('Nueva versión disponible', 'info', 'Toca para actualizar', { label: 'Actualizar', onClick: reload })
+  })
+
   // Sistema de Notificaciones Toasts
   const [toasts, setToasts] = useState<ToastMensaje[]>([])
 
-  const agregarToast = (titulo: string, tipo: TipoToast = 'info', mensaje?: string) => {
+  const agregarToast = (titulo: string, tipo: TipoToast = 'info', mensaje?: string, accion?: { label: string; onClick: () => void }) => {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-    setToasts((prev) => [...prev, { id, tipo, titulo, mensaje }])
+    setToasts((prev) => [...prev, { id, tipo, titulo, mensaje, accion }])
+    // Para toasts con acción, no auto-cerrar (o extender tiempo)
+    const timeout = accion ? 15000 : 4000
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4000)
+    }, timeout)
   }
 
   const cerrarToast = (id: string) => {

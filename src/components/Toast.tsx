@@ -5,6 +5,10 @@ export interface ToastMensaje {
   tipo: TipoToast
   titulo: string
   mensaje?: string
+  accion?: {
+    label: string
+    onClick: () => void
+  }
 }
 
 interface ToastContainerProps {
@@ -70,6 +74,18 @@ export function ToastContainer({ toasts, onCerrar }: ToastContainerProps) {
                 </p>
               )}
             </div>
+            {toast.accion && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.accion!.onClick()
+                  onCerrar(toast.id)
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors shrink-0 cursor-pointer whitespace-nowrap"
+              >
+                {toast.accion.label}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onCerrar(toast.id)}
