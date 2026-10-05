@@ -13,7 +13,7 @@
 * 👤 **Perfil del Estudiante:** Configuración de datos institucionales (Nombre, Matrícula, Carrera, Institución, Fechas límite y Horas objetivo).
 * 💡 **Alertas y Fechas Límite:** Cálculo automático de días restantes hasta la fecha de entrega y ritmo recomendado en horas/día.
 * 📄 **Generador de Reportes PDF:** Creación de reportes institucionales por periodo o rango de fechas con formato imprimible y área de firmas de autorización.
-* 📱 **PWA & Offline-First:** Diseñado para instalarse en PC y celulares Android/iOS, funcionando sin conexión a internet y sincronizándose al reconectar.
+* 📱 **PWA & Offline-First:** Diseñado para instalarse en PC y celulares Android/iOS, funcionando sin conexión a internet. Las operaciones realizadas en offline se guardan en una cola local y se sincronizan automáticamente con el backend al recuperar la conexión.
 
 ---
 

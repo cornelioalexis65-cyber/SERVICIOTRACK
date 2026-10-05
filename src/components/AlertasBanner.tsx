@@ -42,7 +42,9 @@ export function AlertasBanner({
               : `Te faltan ${horasRestantes} horas para completar tu servicio social.`}
           </h4>
           <p className="text-xs text-slate-400 mt-0.5">
-            {diasRestantesLimite !== null && diasRestantesLimite > 0 ? (
+            {diasRestantesLimite === null ? (
+              'Configura tus fechas de inicio y límite en tu perfil para calcular tu ritmo.'
+            ) : diasRestantesLimite > 0 ? (
               <>
                 Quedan <strong className="text-indigo-300">{diasRestantesLimite} días</strong> para tu fecha límite.{' '}
                 {ritmoRecomendado ? (
@@ -54,7 +56,10 @@ export function AlertasBanner({
             ) : diasRestantesLimite === 0 ? (
               <span className="text-amber-400">⚠️ Hoy es la fecha límite configurada.</span>
             ) : (
-              'Configura tus fechas de inicio y límite en tu perfil para calcular tu ritmo.'
+              <span className="text-rose-400">
+                🚨 Tu fecha límite venció hace {Math.abs(diasRestantesLimite)}{' '}
+                {Math.abs(diasRestantesLimite) === 1 ? 'día' : 'días'}. Revisa tu plan de horas.
+              </span>
             )}
           </p>
         </div>

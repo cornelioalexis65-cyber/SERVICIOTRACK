@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Registro } from './types/registro'
 import { useRegistros } from './hooks/useRegistros'
 import { Header } from './components/Header'
@@ -26,6 +26,7 @@ function App() {
     ritmoRecomendado,
     backendConectado,
     sincronizando,
+    pendientes,
     agregarRegistro,
     actualizarRegistro,
     eliminarRegistro,
@@ -36,6 +37,14 @@ function App() {
   // Modales
   const [modalPerfilAbierto, setModalPerfilAbierto] = useState(false)
   const [modalReporteAbierto, setModalReporteAbierto] = useState(false)
+  const [folioReporte, setFolioReporte] = useState('')
+
+  // Genera un folio nuevo cada vez que se abre el reporte
+  // (idéntico en vista previa e impresión)
+  const abrirReporte = () => {
+    setFolioReporte(`ST-${Date.now().toString().slice(-6)}`)
+    setModalReporteAbierto(true)
+  }
 
   // Estado local del formulario
   const [fecha, setFecha] = useState('')
@@ -77,6 +86,14 @@ function App() {
     setRegistroEditando(registro.id)
   }
 
+  // Si el registro en edición desaparece (p. ej. después de una
+  // sincronización que reconcilia IDs), se limpia el modo edición
+  useEffect(() => {
+    if (registroEditando !== null && !registros.some((r) => r.id === registroEditando)) {
+      limpiarFormulario()
+    }
+  }, [registros, registroEditando])
+
   const confirmarEliminar = async (id: number) => {
     const confirmar = window.confirm(
       '¿Seguro que quieres eliminar este registro?'
@@ -98,9 +115,10 @@ function App() {
           perfil={perfil}
           backendConectado={backendConectado}
           sincronizando={sincronizando}
+          pendientes={pendientes}
           onReconectar={sincronizarConBackend}
           onAbrirPerfil={() => setModalPerfilAbierto(true)}
-          onAbrirReporte={() => setModalReporteAbierto(true)}
+          onAbrirReporte={abrirReporte}
         />
 
         <InstalarAppBanner />
@@ -154,6 +172,7 @@ function App() {
         perfil={perfil}
         registros={registros}
         totalHours={totalHours}
+        folio={folioReporte}
         abierto={modalReporteAbierto}
         onCerrar={() => setModalReporteAbierto(false)}
       />
@@ -163,7 +182,7 @@ function App() {
         <button
           type="button"
           id="fab-reporte"
-          onClick={() => setModalReporteAbierto(true)}
+          onClick={abrirReporte}
           title="Generar Reporte PDF"
           className="fixed bottom-5 right-5 z-40 sm:hidden flex items-center gap-2 px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-2xl shadow-indigo-500/40 transition-all active:scale-95"
         >

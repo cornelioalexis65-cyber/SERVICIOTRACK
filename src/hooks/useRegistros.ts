@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Registro, PerfilEstudiante } from '../types/registro'
 import {
   checkBackendHealth,
@@ -12,6 +12,33 @@ import {
 
 const STORAGE_KEY = 'serviciotrack-registros'
 const PROFILE_KEY = 'serviciotrack-perfil'
+const PENDING_KEY = 'serviciotrack-pending'
+
+/**
+ * Operaciones realizadas en modo offline que se aplicarán al backend
+ * en la siguiente sincronización exitosa (en orden FIFO).
+ */
+type OperacionPendiente =
+  | { tipo: 'crear'; localId: number; datos: Omit<Registro, 'id'> }
+  | { tipo: 'actualizar'; localId: number; datos: Omit<Registro, 'id'> }
+  | { tipo: 'eliminar'; localId: number }
+
+function leerCola(): OperacionPendiente[] {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY)
+    return raw ? (JSON.parse(raw) as OperacionPendiente[]) : []
+  } catch {
+    return []
+  }
+}
+
+function guardarCola(cola: OperacionPendiente[]) {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(cola))
+  } catch (e) {
+    console.error('Error al guardar la cola de pendientes:', e)
+  }
+}
 
 const PERFIL_DEFAULT: PerfilEstudiante = {
   nombre: '',
@@ -31,6 +58,21 @@ export function useRegistros() {
   const [cargando, setCargando] = useState(true)
   const [backendConectado, setBackendConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
+  const [pendientes, setPendientes] = useState(0)
+
+  // Siempre el estado más reciente disponible dentro de callbacks
+  // memoizados (evita cerrar sobre valores obsoletos y loops de sync).
+  const registrosRef = useRef(registros)
+  useEffect(() => {
+    registrosRef.current = registros
+  }, [registros])
+
+  const encolarOperacion = (operacion: OperacionPendiente) => {
+    const cola = leerCola()
+    cola.push(operacion)
+    guardarCola(cola)
+    setPendientes(cola.length)
+  }
 
   // 1. Cargar datos locales de inmediato (Offline-First)
   useEffect(() => {
@@ -57,10 +99,50 @@ export function useRegistros() {
       }
     }
 
+    setPendientes(leerCola().length)
     setCargando(false)
   }, [])
 
-  // 2. Comprobar backend y sincronizar registros y perfil
+  /**
+   * Aplica la cola de operaciones pendientes contra el backend, en orden.
+   * Cada operación exitosa se elimina de la cola (persistida). Si alguna
+   * falla, se detiene el proceso y las restantes se reintentan en la
+   * siguiente sincronización. Devuelve el mapeo localId -> idRemoto.
+   */
+  const aplicarOperacionesPendientes = async (): Promise<Map<number, number>> => {
+    const mapeo = new Map<number, number>()
+    let cola = leerCola()
+    if (cola.length === 0) return mapeo
+
+    for (const op of cola) {
+      try {
+        if (op.tipo === 'crear') {
+          const creado = await createRegistroApi(op.datos)
+          mapeo.set(op.localId, creado.id)
+        } else if (op.tipo === 'actualizar') {
+          const idRemoto = mapeo.get(op.localId) ?? op.localId
+          await updateRegistroApi(idRemoto, op.datos)
+          mapeo.set(op.localId, idRemoto)
+        } else {
+          const idRemoto = mapeo.get(op.localId) ?? op.localId
+          await deleteRegistroApi(idRemoto)
+        }
+        cola = cola.slice(1)
+        guardarCola(cola)
+        setPendientes(cola.length)
+      } catch (err) {
+        console.warn(
+          `Operación pendiente no aplicada (${op.tipo}); se reintenta en la próxima sincronización:`,
+          err
+        )
+        break
+      }
+    }
+
+    return mapeo
+  }
+
+  // 2. Comprobar backend, aplicar pendientes y sincronizar registros y perfil
   const sincronizarConBackend = useCallback(async () => {
     setSincronizando(true)
     const isOnline = await checkBackendHealth()
@@ -68,13 +150,25 @@ export function useRegistros() {
 
     if (isOnline) {
       try {
+        // 1) Empujar las operaciones realizadas en offline al servidor
+        const mapeo = await aplicarOperacionesPendientes()
+
+        // 2) Obtener el estado actual del servidor
         const [registrosRemotos, perfilRemoto] = await Promise.all([
           fetchRegistrosApi(),
           fetchPerfilApi().catch(() => null),
         ])
 
-        setRegistros(registrosRemotos)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(registrosRemotos))
+        // 3) Merge: datos del servidor + registros locales que aún no se
+        //    aplicaron (evita perder registros creados en offline)
+        const idsRemotos = new Set(registrosRemotos.map((r) => r.id))
+        const localesSinAplicar = registrosRef.current.filter(
+          (r) => !mapeo.has(r.id) && !idsRemotos.has(r.id)
+        )
+        const combinados = [...registrosRemotos, ...localesSinAplicar]
+
+        setRegistros(combinados)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(combinados))
 
         if (perfilRemoto) {
           const guardadoActual = localStorage.getItem(PROFILE_KEY)
@@ -103,10 +197,22 @@ export function useRegistros() {
       }
     }
     setSincronizando(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     sincronizarConBackend()
+  }, [sincronizarConBackend])
+
+  // 2.1 Re-sincronizar automáticamente al recuperar la conexión
+  useEffect(() => {
+    const alRecuperarConexion = () => {
+      sincronizarConBackend()
+    }
+    window.addEventListener('online', alRecuperarConexion)
+    return () => {
+      window.removeEventListener('online', alRecuperarConexion)
+    }
   }, [sincronizarConBackend])
 
   // 3. Persistir en localStorage ante cualquier cambio de estado
@@ -147,8 +253,9 @@ export function useRegistros() {
     const [y, m, d] = perfil.fechaLimite.split('-').map(Number)
     const fechaFin = new Date(y, m - 1, d)
     const diffMs = fechaFin.getTime() - hoy.getTime()
+    // Negativo si la fecha límite ya pasó (vencida)
     const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-    diasRestantesLimite = Math.max(diffDias, 0)
+    diasRestantesLimite = diffDias
 
     if (horasRestantes > 0 && diasRestantesLimite > 0) {
       ritmoRecomendado = Number((horasRestantes / diasRestantesLimite).toFixed(1))
@@ -193,6 +300,14 @@ export function useRegistros() {
     return { valido: true }
   }
 
+  // ID local seguro (único entre los registros actuales) para modo offline
+  const generarIdLocal = () => {
+    let id = Date.now()
+    const existentes = new Set(registrosRef.current.map((r) => r.id))
+    while (existentes.has(id)) id += 1
+    return id
+  }
+
   // --- Operaciones CRUD ---
   const agregarRegistro = async (
     datos: Omit<Registro, 'id'>
@@ -212,13 +327,23 @@ export function useRegistros() {
       }
     }
 
+    // Modo offline: guardar local y encolar para el servidor
     const nuevoLocal: Registro = {
-      id: Date.now(),
+      id: generarIdLocal(),
       fecha: datos.fecha,
       horas: Number(datos.horas),
       actividad: datos.actividad.trim(),
     }
     setRegistros((prev) => [nuevoLocal, ...prev])
+    encolarOperacion({
+      tipo: 'crear',
+      localId: nuevoLocal.id,
+      datos: {
+        fecha: nuevoLocal.fecha,
+        horas: nuevoLocal.horas,
+        actividad: nuevoLocal.actividad,
+      },
+    })
     return { exito: true }
   }
 
@@ -255,6 +380,15 @@ export function useRegistros() {
           : reg
       )
     )
+    encolarOperacion({
+      tipo: 'actualizar',
+      localId: id,
+      datos: {
+        fecha: datos.fecha,
+        horas: Number(datos.horas),
+        actividad: datos.actividad.trim(),
+      },
+    })
     return { exito: true }
   }
 
@@ -263,8 +397,13 @@ export function useRegistros() {
       try {
         await deleteRegistroApi(id)
       } catch (err) {
-        console.warn('Error al eliminar en backend, eliminando localmente:', err)
+        // El registro ya se marca como eliminado localmente; se encola
+        // para que el servidor lo elimine en la próxima sincronización
+        console.warn('Error al eliminar en backend; se encolará para sincronizar:', err)
+        encolarOperacion({ tipo: 'eliminar', localId: id })
       }
+    } else {
+      encolarOperacion({ tipo: 'eliminar', localId: id })
     }
 
     setRegistros((prev) => prev.filter((reg) => reg.id !== id))
@@ -289,6 +428,7 @@ export function useRegistros() {
     cargando,
     backendConectado,
     sincronizando,
+    pendientes,
     totalHours,
     horasRealizadas,
     horasRestantes,

@@ -5,6 +5,7 @@ interface ReporteModalProps {
   perfil: PerfilEstudiante
   registros: Registro[]
   totalHours: number
+  folio: string
   abierto: boolean
   onCerrar: () => void
 }
@@ -13,6 +14,7 @@ export function ReporteModal({
   perfil,
   registros,
   totalHours,
+  folio,
   abierto,
   onCerrar,
 }: ReporteModalProps) {
@@ -137,7 +139,7 @@ export function ReporteModal({
           </div>
           <div class="header-meta">
             <div>Fecha de emisión: ${new Date().toLocaleDateString('es-MX')}</div>
-            <div><b>Folio: ST-${Date.now().toString().slice(-6)}</b></div>
+            <div><b>Folio: ${folio}</b></div>
           </div>
         </div>
 
@@ -299,7 +301,7 @@ export function ReporteModal({
                 </div>
                 <div className="text-right text-[11px] text-slate-500 shrink-0">
                   <p>Fecha de emisión: {new Date().toLocaleDateString('es-MX')}</p>
-                  <p className="font-bold text-slate-800">Folio: ST-{Date.now().toString().slice(-6)}</p>
+                  <p className="font-bold text-slate-800">Folio: {folio}</p>
                 </div>
               </div>
 
