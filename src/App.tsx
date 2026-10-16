@@ -15,6 +15,7 @@ import { ReporteModal } from './components/ReporteModal'
 import { ToastContainer, type ToastMensaje, type TipoToast } from './components/Toast'
 import { ConfirmModal } from './components/ConfirmModal'
 import { exportarCSV } from './utils/exportUtils'
+import { verificarServidor, iniciarSesionApi, cerrarSesion, type EstadoServidor } from './services/api'
 
 function App() {
   const {
@@ -192,9 +193,50 @@ function App() {
     agregarToast('Reporte CSV generado', 'exito', 'Descargado en formato compatible con Excel')
   }
 
+  // --- Cuenta en la nube ---
+  const [estadoServidor, setEstadoServidor] = useState<EstadoServidor>('sin-conexion')
+  const [pestanaPerfil, setPestanaPerfil] = useState<'perfil' | 'respaldo' | 'documentos'>('perfil')
+
+  // Revisar la sesión al abrir la app y cada vez que cambia la conexión
+  useEffect(() => {
+    verificarServidor().then(setEstadoServidor)
+  }, [backendConectado])
+
+  const abrirPerfil = (pestana: 'perfil' | 'respaldo' | 'documentos' = 'perfil') => {
+    setPestanaPerfil(pestana)
+    setModalPerfilAbierto(true)
+  }
+
   const handleReconectar = async () => {
+    const estado = await verificarServidor()
+    setEstadoServidor(estado)
+    if (estado === 'sin-sesion') {
+      abrirPerfil('respaldo')
+      return
+    }
     await Promise.all([sincronizarConBackend(), sincronizarDocumentos()])
-    agregarToast('Sincronización ejecutada', 'info')
+    agregarToast(
+      estado === 'conectado' ? 'Sincronización ejecutada' : 'Sin conexión con la nube',
+      'info',
+      estado === 'conectado' ? undefined : 'Tus cambios quedan guardados en este dispositivo.'
+    )
+  }
+
+  const handleIniciarSesion = async (password: string): Promise<{ exito: boolean; error?: string }> => {
+    try {
+      await iniciarSesionApi(password)
+    } catch (err) {
+      return { exito: false, error: (err as Error).message }
+    }
+    setEstadoServidor('conectado')
+    await Promise.all([sincronizarConBackend(), sincronizarDocumentos()])
+    return { exito: true }
+  }
+
+  const handleCerrarSesion = async () => {
+    cerrarSesion()
+    setEstadoServidor('sin-sesion')
+    await Promise.all([sincronizarConBackend(), sincronizarDocumentos()])
   }
 
   const handleRestaurarBackup = async (
@@ -213,8 +255,9 @@ function App() {
           backendConectado={backendConectado}
           sincronizando={sincronizando}
           pendientes={pendientes}
+          sinSesion={estadoServidor === 'sin-sesion'}
           onReconectar={handleReconectar}
-          onAbrirPerfil={() => setModalPerfilAbierto(true)}
+          onAbrirPerfil={() => abrirPerfil()}
           onAbrirReporte={abrirReporte}
         />
 
@@ -270,7 +313,10 @@ function App() {
         onGuardar={actualizarPerfil}
         onRestaurarBackup={handleRestaurarBackup}
         onNotificar={(mensaje, tipo) => agregarToast(mensaje, tipo)}
-        onConfigServidorCambiada={handleReconectar}
+        pestanaInicial={pestanaPerfil}
+        estadoServidor={estadoServidor}
+        onIniciarSesion={handleIniciarSesion}
+        onCerrarSesion={handleCerrarSesion}
         // Documentos
         documentosCargando={documentosCargando}
         documentosBackendConectado={documentosBackendConectado}

@@ -5,6 +5,7 @@ interface HeaderProps {
   backendConectado?: boolean
   sincronizando?: boolean
   pendientes?: number
+  sinSesion?: boolean
   onReconectar?: () => void
   onAbrirPerfil: () => void
   onAbrirReporte: () => void
@@ -15,6 +16,7 @@ export function Header({
   backendConectado = false,
   sincronizando = false,
   pendientes = 0,
+  sinSesion = false,
   onReconectar,
   onAbrirPerfil,
   onAbrirReporte,
@@ -77,7 +79,9 @@ export function Header({
                 ? `${pendientes} cambio(s) pendiente(s) de sincronizar. Clic para sincronizar.`
                 : backendConectado
                   ? 'Servidor conectado. Clic para sincronizar.'
-                  : 'Modo offline. Clic para reintentar.'
+                  : sinSesion
+                    ? 'Sin sesión en la nube. Clic para iniciar sesión.'
+                    : 'Modo offline. Clic para reintentar.'
             }
             id="btn-estado-servidor"
             className={`inline-flex items-center gap-1 px-2.5 py-2 rounded-full text-xs font-semibold border transition-colors cursor-pointer active:scale-95 ${
@@ -102,9 +106,11 @@ export function Header({
                   ? pendientes > 0
                     ? `Online · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}`
                     : 'API Conectada'
-                  : pendientes > 0
-                    ? `Offline · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}`
-                    : 'Modo Offline'}
+                  : sinSesion
+                    ? 'Iniciar sesión'
+                    : pendientes > 0
+                      ? `Offline · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}`
+                      : 'Modo Offline'}
             </span>
           </button>
         </div>
@@ -113,7 +119,7 @@ export function Header({
       {/* Barra de acciones rápidas en móvil (etiquetas visibles) */}
       <div className="flex sm:hidden items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-800/60">
         <span className="text-xs text-slate-500 mr-auto">
-          {sincronizando ? '⟳ Sincronizando...' : backendConectado ? '🟢 Online' : '🟡 Offline'}
+          {sincronizando ? '⟳ Sincronizando...' : backendConectado ? '🟢 Online' : sinSesion ? '🔑 Sin sesión' : '🟡 Offline'}
           {!sincronizando && pendientes > 0 ? ` · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : ''}
         </span>
         <button

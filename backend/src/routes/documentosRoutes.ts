@@ -9,11 +9,12 @@ import {
   cambiarEstadoDocumento,
 } from '../controllers/documentosController.js'
 
-// Configurar multer para almacenamiento temporal en memoria
+// El archivo se recibe en memoria y se guarda en la base de datos.
+// 4 MB: Vercel rechaza peticiones de más de 4,5 MB.
 const upload = multer({
-  dest: 'uploads/temp/',
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 25 * 1024 * 1024, // 25MB máx
+    fileSize: 4 * 1024 * 1024,
   },
   fileFilter: (_req, file, cb) => {
     const permitidos = [

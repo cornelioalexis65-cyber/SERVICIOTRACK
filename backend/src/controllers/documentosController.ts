@@ -7,18 +7,40 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// Carpeta de archivos antiguos (antes se guardaban en disco). Solo lectura.
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads')
-
-// Asegurar que existe el directorio de uploads
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true })
-}
 
 const MIME_TYPES_PERMITIDOS = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
   'application/msword',                                                       // .doc
   'application/pdf',                                                          // .pdf
 ]
+
+/**
+ * Columnas que se devuelven al cliente: todas menos el contenido del archivo,
+ * que solo viaja en la descarga.
+ */
+const columnasPublicas = {
+  id: documentosTable.id,
+  tipo: documentosTable.tipo,
+  periodo: documentosTable.periodo,
+  estado: documentosTable.estado,
+  fechaLimite: documentosTable.fechaLimite,
+  fechaEntrega: documentosTable.fechaEntrega,
+  nombreArchivo: documentosTable.nombreArchivo,
+  mimeType: documentosTable.mimeType,
+  tamano: documentosTable.tamano,
+  notas: documentosTable.notas,
+  creadoEn: documentosTable.creadoEn,
+  actualizadoEn: documentosTable.actualizadoEn,
+}
+
+type DocumentoPublico = { [K in keyof typeof columnasPublicas]: (typeof columnasPublicas)[K]['_']['data'] | null }
+
+/** El frontend usa `tamaño`; se envían los dos nombres por compatibilidad. */
+function paraCliente(doc: DocumentoPublico) {
+  return { ...doc, tamaño: doc.tamano }
+}
 
 function validarMimeType(mime: string): boolean {
   return MIME_TYPES_PERMITIDOS.includes(mime)
@@ -37,6 +59,11 @@ function validarFecha(fecha: string): boolean {
   return fechaObj.getFullYear() === anio && fechaObj.getMonth() === mes - 1 && fechaObj.getDate() === dia
 }
 
+/** Fecha de hoy (YYYY-MM-DD) en la zona horaria del servidor, no en UTC. */
+function hoyLocal(): string {
+  return new Date().toLocaleDateString('en-CA')
+}
+
 /**
  * GET /api/documentos
  * Lista todos los documentos con metadatos (sin archivos)
@@ -44,11 +71,11 @@ function validarFecha(fecha: string): boolean {
 export async function getDocumentos(_req: Request, res: Response): Promise<void> {
   try {
     const documentos = await db
-      .select()
+      .select(columnasPublicas)
       .from(documentosTable)
       .orderBy(desc(documentosTable.creadoEn))
 
-    res.json(documentos)
+    res.json(documentos.map(paraCliente))
   } catch (error) {
     console.error('Error al obtener documentos:', error)
     res.status(500).json({ error: 'Error interno al consultar documentos.' })
@@ -90,15 +117,6 @@ export async function createDocumento(req: Request, res: Response): Promise<void
       return
     }
 
-    // Generar nombre único para el archivo en disco
-    const timestamp = Date.now()
-    const _ext = path.extname(file.originalname) || '.docx'
-    const nombreArchivoDisco = `${timestamp}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-    const rutaArchivo = path.join(UPLOAD_DIR, nombreArchivoDisco)
-
-    // Mover archivo a directorio permanente
-    fs.renameSync(file.path, rutaArchivo)
-
     const [nuevoDocumento] = await db
       .insert(documentosTable)
       .values({
@@ -109,25 +127,22 @@ export async function createDocumento(req: Request, res: Response): Promise<void
         nombreArchivo: file.originalname,
         mimeType: file.mimetype,
         tamano: file.size,
-        rutaArchivo: nombreArchivoDisco, // solo nombre, no ruta completa
+        rutaArchivo: '',
+        contenido: file.buffer,
         notas: notas || '',
       })
-      .returning()
+      .returning(columnasPublicas)
 
-    res.status(201).json(nuevoDocumento)
+    res.status(201).json(paraCliente(nuevoDocumento))
   } catch (error) {
     console.error('Error al crear documento:', error)
-    // Si falla, limpiar archivo subido si existe
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path)
-    }
     res.status(500).json({ error: 'Error interno al guardar el documento.' })
   }
 }
 
 /**
  * GET /api/documentos/:id/descargar
- * Descarga el archivo físico
+ * Descarga el archivo
  */
 export async function downloadDocumento(req: Request, res: Response): Promise<void> {
   try {
@@ -147,19 +162,30 @@ export async function downloadDocumento(req: Request, res: Response): Promise<vo
       return
     }
 
-    const rutaCompleta = path.join(UPLOAD_DIR, documento.rutaArchivo)
-    if (!fs.existsSync(rutaCompleta)) {
+    let contenido: Buffer | null = documento.contenido ? Buffer.from(documento.contenido) : null
+
+    // Archivos antiguos guardados en disco
+    if (!contenido && documento.rutaArchivo) {
+      const rutaCompleta = path.join(UPLOAD_DIR, path.basename(documento.rutaArchivo))
+      if (fs.existsSync(rutaCompleta)) {
+        contenido = fs.readFileSync(rutaCompleta)
+      }
+    }
+
+    if (!contenido) {
       res.status(404).json({ error: 'Archivo no encontrado en el servidor.' })
       return
     }
 
-    // Headers para descarga correcta
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(documento.nombreArchivo)}"`)
+    // filename* admite acentos y espacios (RFC 6266)
+    const nombreAscii = documento.nombreArchivo.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '')
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${nombreAscii}"; filename*=UTF-8''${encodeURIComponent(documento.nombreArchivo)}`
+    )
     res.setHeader('Content-Type', documento.mimeType)
-    res.setHeader('Content-Length', documento.tamano)
-
-    const stream = fs.createReadStream(rutaCompleta)
-    stream.pipe(res)
+    res.setHeader('Content-Length', contenido.length)
+    res.end(contenido)
   } catch (error) {
     console.error('Error al descargar documento:', error)
     res.status(500).json({ error: 'Error interno al descargar el documento.' })
@@ -179,7 +205,7 @@ export async function updateDocumento(req: Request, res: Response): Promise<void
     }
 
     const [existente] = await db
-      .select()
+      .select(columnasPublicas)
       .from(documentosTable)
       .where(eq(documentosTable.id, id))
 
@@ -207,48 +233,21 @@ export async function updateDocumento(req: Request, res: Response): Promise<void
       return
     }
 
-    // Si se sube nuevo archivo, validar y reemplazar
-    let nombreArchivoDisco = existente.rutaArchivo
-    let nombreArchivoOriginal = existente.nombreArchivo
-    let mimeType = existente.mimeType
-    let tamano = existente.tamano
-
-    if (file) {
-      if (!validarMimeType(file.mimetype)) {
-        res.status(400).json({ error: 'Tipo de archivo no permitido. Use .doc, .docx o .pdf' })
-        return
-      }
-
-      // Eliminar archivo anterior
-      const rutaAnterior = path.join(UPLOAD_DIR, existente.rutaArchivo)
-      if (fs.existsSync(rutaAnterior)) {
-        fs.unlinkSync(rutaAnterior)
-      }
-
-      // Guardar nuevo archivo
-      const _ext = path.extname(file.originalname) || '.docx'
-      nombreArchivoDisco = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-      const rutaNueva = path.join(UPLOAD_DIR, nombreArchivoDisco)
-      fs.renameSync(file.path, rutaNueva)
-
-      nombreArchivoOriginal = file.originalname
-      mimeType = file.mimetype
-      tamano = file.size
+    if (file && !validarMimeType(file.mimetype)) {
+      res.status(400).json({ error: 'Tipo de archivo no permitido. Use .doc, .docx o .pdf' })
+      return
     }
 
     // Determinar estado automático si no se proporciona
     let estadoFinal = estado || existente.estado
     if (!estado && fechaLimite) {
-      const hoy = new Date()
-      hoy.setHours(0, 0, 0, 0)
-      const limite = new Date(fechaLimite + 'T00:00:00')
-      estadoFinal = limite < hoy ? 'vencido' : 'pendiente'
+      estadoFinal = fechaLimite < hoyLocal() ? 'vencido' : 'pendiente'
     }
 
     // Si se marca como entregado y no tenía fecha, poner hoy
     let fechaEntregaFinal = fechaEntrega || existente.fechaEntrega
     if (estadoFinal === 'entregado' && !existente.fechaEntrega && !fechaEntrega) {
-      fechaEntregaFinal = new Date().toISOString().split('T')[0]
+      fechaEntregaFinal = hoyLocal()
     }
 
     const [actualizado] = await db
@@ -259,29 +258,31 @@ export async function updateDocumento(req: Request, res: Response): Promise<void
         estado: estadoFinal,
         fechaLimite: fechaLimite || existente.fechaLimite,
         fechaEntrega: fechaEntregaFinal,
-        nombreArchivo: nombreArchivoOriginal,
-        mimeType,
-        tamano,
-        rutaArchivo: nombreArchivoDisco,
+        ...(file
+          ? {
+              nombreArchivo: file.originalname,
+              mimeType: file.mimetype,
+              tamano: file.size,
+              rutaArchivo: '',
+              contenido: file.buffer,
+            }
+          : {}),
         notas: notas !== undefined ? (notas || '') : existente.notas,
         actualizadoEn: new Date().toISOString(),
       })
       .where(eq(documentosTable.id, id))
-      .returning()
+      .returning(columnasPublicas)
 
-    res.json(actualizado)
+    res.json(paraCliente(actualizado))
   } catch (error) {
     console.error('Error al actualizar documento:', error)
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path)
-    }
     res.status(500).json({ error: 'Error interno al actualizar el documento.' })
   }
 }
 
 /**
  * DELETE /api/documentos/:id
- * Elimina documento y su archivo físico
+ * Elimina el documento (y su archivo antiguo en disco, si lo tenía)
  */
 export async function deleteDocumento(req: Request, res: Response): Promise<void> {
   try {
@@ -292,7 +293,7 @@ export async function deleteDocumento(req: Request, res: Response): Promise<void
     }
 
     const [existente] = await db
-      .select()
+      .select({ id: documentosTable.id, rutaArchivo: documentosTable.rutaArchivo })
       .from(documentosTable)
       .where(eq(documentosTable.id, id))
 
@@ -301,13 +302,14 @@ export async function deleteDocumento(req: Request, res: Response): Promise<void
       return
     }
 
-    // Eliminar archivo físico
-    const rutaArchivo = path.join(UPLOAD_DIR, existente.rutaArchivo)
-    if (fs.existsSync(rutaArchivo)) {
-      fs.unlinkSync(rutaArchivo)
-    }
-
     await db.delete(documentosTable).where(eq(documentosTable.id, id))
+
+    if (existente.rutaArchivo) {
+      const rutaArchivo = path.join(UPLOAD_DIR, path.basename(existente.rutaArchivo))
+      if (fs.existsSync(rutaArchivo)) {
+        fs.unlinkSync(rutaArchivo)
+      }
+    }
 
     res.json({ mensaje: 'Documento eliminado correctamente.', id })
   } catch (error) {
@@ -335,7 +337,7 @@ export async function cambiarEstadoDocumento(req: Request, res: Response): Promi
     }
 
     const [existente] = await db
-      .select()
+      .select(columnasPublicas)
       .from(documentosTable)
       .where(eq(documentosTable.id, id))
 
@@ -346,7 +348,7 @@ export async function cambiarEstadoDocumento(req: Request, res: Response): Promi
 
     let fechaEntrega = existente.fechaEntrega
     if (estado === 'entregado' && !existente.fechaEntrega) {
-      fechaEntrega = new Date().toISOString().split('T')[0]
+      fechaEntrega = hoyLocal()
     }
 
     const [actualizado] = await db
@@ -357,9 +359,9 @@ export async function cambiarEstadoDocumento(req: Request, res: Response): Promi
         actualizadoEn: new Date().toISOString(),
       })
       .where(eq(documentosTable.id, id))
-      .returning()
+      .returning(columnasPublicas)
 
-    res.json(actualizado)
+    res.json(paraCliente(actualizado))
   } catch (error) {
     console.error('Error al cambiar estado:', error)
     res.status(500).json({ error: 'Error interno al cambiar el estado.' })

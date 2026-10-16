@@ -9,7 +9,7 @@ export async function getPerfil(_req: Request, res: Response): Promise<void> {
 
     if (!perfil) {
       res.json({
-        nombre: 'Alexis',
+        nombre: 'Estudiante',
         matricula: '',
         carrera: '',
         institucion: '',

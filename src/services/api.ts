@@ -1,49 +1,102 @@
 import type { Registro, PerfilEstudiante } from '../types/registro'
 import type { DocumentoServicio, NuevoDocumentoData, ActualizarDocumentoData } from '../types/documento'
 
-const API_URL_POR_DEFECTO = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
-const URL_KEY = 'serviciotrack-api-url'
-const TOKEN_KEY = 'serviciotrack-api-token'
+/**
+ * URL del backend, fijada al compilar (variable VITE_API_URL; en GitHub
+ * Actions viene de la variable del repositorio). No es un secreto.
+ */
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/+$/, '')
+const SESION_KEY = 'serviciotrack-sesion'
 
-// ===== CONFIGURACIÓN DEL SERVIDOR =====
+// Claves de la versión anterior (URL y token escritos a mano): ya no se usan
+try {
+  localStorage.removeItem('serviciotrack-api-url')
+  localStorage.removeItem('serviciotrack-api-token')
+} catch {
+  // localStorage no disponible
+}
+
+// ===== SESIÓN =====
 
 /**
- * La URL del servidor y el token se configuran desde la app (pestaña de
- * respaldo) y se guardan solo en este dispositivo. Así la versión publicada
- * en GitHub Pages puede conectarse a un backend real sin recompilar y el
- * token nunca queda dentro del código publicado.
+ * Sesión que entrega el servidor al iniciar sesión con la contraseña. No es
+ * la contraseña: es una prueba firmada que caduca a los 30 días.
  */
-export function getConfigServidor(): { url: string; token: string } {
+function leerSesion(): string {
   try {
-    return {
-      url: localStorage.getItem(URL_KEY) || API_URL_POR_DEFECTO,
-      token: localStorage.getItem(TOKEN_KEY) || '',
+    const raw = localStorage.getItem(SESION_KEY)
+    if (!raw) return ''
+    const { token, expiraEn } = JSON.parse(raw) as { token: string; expiraEn: string | null }
+    if (expiraEn && new Date(expiraEn).getTime() <= Date.now()) {
+      localStorage.removeItem(SESION_KEY)
+      return ''
     }
+    return token || ''
   } catch {
-    return { url: API_URL_POR_DEFECTO, token: '' }
+    return ''
   }
 }
 
-export function guardarConfigServidor(url: string, token: string): void {
-  const urlLimpia = url.trim().replace(/\/+$/, '')
-  if (urlLimpia && urlLimpia !== API_URL_POR_DEFECTO) {
-    localStorage.setItem(URL_KEY, urlLimpia)
-  } else {
-    localStorage.removeItem(URL_KEY)
+export function cerrarSesion(): void {
+  try {
+    localStorage.removeItem(SESION_KEY)
+  } catch {
+    // localStorage no disponible
   }
-  if (token.trim()) {
-    localStorage.setItem(TOKEN_KEY, token.trim())
-  } else {
-    localStorage.removeItem(TOKEN_KEY)
+}
+
+/**
+ * Inicia sesión con la contraseña y guarda la sesión en este dispositivo.
+ */
+export async function iniciarSesionApi(password: string): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(apiUrl('/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+      signal: AbortSignal.timeout(15000),
+    })
+  } catch {
+    throw new Error('No se pudo conectar con el servidor. Revisa tu conexión.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new ApiError(data.error || 'No se pudo iniciar sesión.', res.status)
+  }
+  localStorage.setItem(SESION_KEY, JSON.stringify({ token: data.token, expiraEn: data.expiraEn }))
+}
+
+export type EstadoServidor = 'conectado' | 'sin-sesion' | 'sin-conexion'
+
+/**
+ * Comprueba si hay servidor y si la sesión guardada sigue siendo válida.
+ * Una sesión rechazada (401) se borra.
+ */
+export async function verificarServidor(): Promise<EstadoServidor> {
+  try {
+    const res = await fetch(apiUrl('/sesion'), {
+      method: 'GET',
+      headers: cabeceras(),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (res.ok) return 'conectado'
+    if (res.status === 401) {
+      cerrarSesion()
+      return 'sin-sesion'
+    }
+    return 'sin-conexion'
+  } catch {
+    return 'sin-conexion'
   }
 }
 
 function apiUrl(ruta: string): string {
-  return `${getConfigServidor().url}${ruta}`
+  return `${API_URL}${ruta}`
 }
 
 function cabeceras(extra: Record<string, string> = {}): Record<string, string> {
-  const { token } = getConfigServidor()
+  const token = leerSesion()
   return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
 }
 
@@ -78,29 +131,20 @@ export function esErrorPermanente(err: unknown): boolean {
 async function errorDeRespuesta(res: Response, mensajePorDefecto: string): Promise<ApiError> {
   const data = await res.json().catch(() => ({}))
   if (res.status === 401) {
-    return new ApiError('Token del servidor inválido o ausente.', 401)
+    cerrarSesion()
+    return new ApiError('Tu sesión caducó. Vuelve a iniciar sesión.', 401)
   }
   return new ApiError(data.error || mensajePorDefecto, res.status)
 }
 
-// ===== SALUD / SESIÓN =====
+// ===== SALUD =====
 
 /**
- * Comprueba que el servidor responde y que acepta el token configurado.
- * Si el token es incorrecto se considera desconectado: las operaciones se
- * guardan en la cola local en vez de fallar.
+ * El servidor cuenta como conectado solo si responde y acepta la sesión.
+ * Sin sesión, las operaciones se guardan en la cola local en vez de fallar.
  */
 export async function checkBackendHealth(): Promise<boolean> {
-  try {
-    const res = await fetch(apiUrl('/sesion'), {
-      method: 'GET',
-      headers: cabeceras(),
-      signal: AbortSignal.timeout(2500),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
+  return (await verificarServidor()) === 'conectado'
 }
 
 // ===== REGISTROS =====

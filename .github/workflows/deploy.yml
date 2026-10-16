@@ -37,6 +37,8 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /SERVICIOTRACK/
+          # URL del backend en Vercel (Settings > Secrets and variables > Actions > Variables)
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v4

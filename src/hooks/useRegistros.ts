@@ -166,19 +166,69 @@ export function useRegistros() {
 
     if (isOnline) {
       try {
-        // 1) Empujar las operaciones realizadas en offline al servidor
-        const { mapeo, descartados, avisos } = await aplicarOperacionesPendientes()
+        // 1) Perfil primero: sus horas objetivo son el límite que valida el servidor
+        const perfilRemoto = await fetchPerfilApi().catch(() => null)
+        if (perfilRemoto) {
+          const guardadoActual = localStorage.getItem(PROFILE_KEY)
+          const localActual: Partial<PerfilEstudiante> | null = guardadoActual ? JSON.parse(guardadoActual) : null
+          const remotoSinConfigurar = !perfilRemoto.nombre || perfilRemoto.nombre === 'Estudiante'
+
+          let perfilCombinado: PerfilEstudiante
+          if (localActual?.nombre && remotoSinConfigurar) {
+            // Servidor nuevo o sin configurar: el perfil de este dispositivo manda
+            perfilCombinado = { ...PERFIL_DEFAULT, ...localActual }
+            await updatePerfilApi(perfilCombinado).catch(() => null)
+          } else {
+            // Si el usuario ya personalizó su nombre/matrícula/programa en local, conservamos esos datos
+            perfilCombinado = {
+              ...PERFIL_DEFAULT,
+              ...perfilRemoto,
+              ...(localActual?.nombre ? { nombre: localActual.nombre } : {}),
+              ...(localActual?.matricula ? { matricula: localActual.matricula } : {}),
+              ...(localActual?.programa ? { programa: localActual.programa } : {}),
+              ...(localActual?.supervisor ? { supervisor: localActual.supervisor } : {}),
+            }
+          }
+
+          setPerfil(perfilCombinado)
+          localStorage.setItem(PROFILE_KEY, JSON.stringify(perfilCombinado))
+        }
+
+        // 2) Empujar las operaciones realizadas en offline al servidor
+        const resultado = await aplicarOperacionesPendientes()
+        const { mapeo, descartados } = resultado
+        const avisos = [...resultado.avisos]
+
+        // 3) Obtener el estado actual del servidor
+        let registrosRemotos = await fetchRegistrosApi()
+
+        // 4) Primera conexión con un servidor vacío: subir los registros que
+        //    hasta ahora solo existían en este dispositivo
+        if (registrosRemotos.length === 0 && leerCola().length === 0) {
+          const soloLocales = registrosRef.current
+            .filter((r) => !mapeo.has(r.id) && !descartados.has(r.id))
+            .sort((a, b) => a.fecha.localeCompare(b.fecha))
+          if (soloLocales.length > 0) {
+            for (const r of soloLocales) {
+              encolarOperacion({
+                tipo: 'crear',
+                localId: r.id,
+                datos: { fecha: r.fecha, horas: r.horas, actividad: r.actividad },
+              })
+            }
+            const subida = await aplicarOperacionesPendientes()
+            subida.mapeo.forEach((idRemoto, idLocal) => mapeo.set(idLocal, idRemoto))
+            subida.descartados.forEach((id) => descartados.add(id))
+            avisos.push(...subida.avisos)
+            registrosRemotos = await fetchRegistrosApi()
+          }
+        }
+
         if (avisos.length > 0) {
           setAvisosSync((prev) => [...prev, ...avisos])
         }
 
-        // 2) Obtener el estado actual del servidor
-        const [registrosRemotos, perfilRemoto] = await Promise.all([
-          fetchRegistrosApi(),
-          fetchPerfilApi().catch(() => null),
-        ])
-
-        // 3) Merge: datos del servidor + registros locales que aún no se
+        // 5) Merge: datos del servidor + registros locales que aún no se
         //    aplicaron (evita perder registros creados en offline). Los que
         //    el servidor rechazó se quitan para no mostrar horas que no cuentan.
         const idsRemotos = new Set(registrosRemotos.map((r) => r.id))
@@ -189,29 +239,6 @@ export function useRegistros() {
 
         setRegistros(combinados)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(combinados))
-
-        if (perfilRemoto) {
-          const guardadoActual = localStorage.getItem(PROFILE_KEY)
-          const localActual: Partial<PerfilEstudiante> | null = guardadoActual ? JSON.parse(guardadoActual) : null
-
-          // Si el usuario ya personalizó su nombre/matrícula/programa en local, conservamos esos datos
-          const perfilCombinado: PerfilEstudiante = {
-            ...PERFIL_DEFAULT,
-            ...perfilRemoto,
-            ...(localActual?.nombre ? { nombre: localActual.nombre } : {}),
-            ...(localActual?.matricula ? { matricula: localActual.matricula } : {}),
-            ...(localActual?.programa ? { programa: localActual.programa } : {}),
-            ...(localActual?.supervisor ? { supervisor: localActual.supervisor } : {}),
-          }
-
-          setPerfil(perfilCombinado)
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(perfilCombinado))
-
-          // Si el backend tenía datos por defecto o incompletos y local tiene datos reales, actualizamos el backend
-          if (localActual?.nombre && (!perfilRemoto.nombre || perfilRemoto.nombre === 'Estudiante')) {
-            updatePerfilApi(perfilCombinado).catch(() => null)
-          }
-        }
       } catch (error) {
         console.warn('Error al sincronizar con el backend:', error)
       }

@@ -20,6 +20,9 @@ import {
   limpiarArchivosHuerfanos,
 } from '../utils/idb'
 
+// El servidor (Vercel) no acepta peticiones de más de 4,5 MB
+const TAMANO_MAXIMO = 4 * 1024 * 1024
+
 const STORAGE_KEY = 'serviciotrack-documentos'
 const PENDING_KEY = 'serviciotrack-documentos-pending'
 
@@ -203,13 +206,39 @@ export function useDocumentos() {
     if (isOnline) {
       try {
         // 1) Empujar operaciones pendientes
-        const { mapeo, descartados, avisos } = await aplicarOperacionesPendientes()
+        const resultado = await aplicarOperacionesPendientes()
+        const { mapeo, descartados } = resultado
+        const avisos = [...resultado.avisos]
+
+        // 2) Obtener estado del servidor
+        let documentosRemotos = await fetchDocumentosApi()
+
+        // Primera conexión con un servidor vacío: subir los documentos que
+        // hasta ahora solo existían en este dispositivo
+        if (documentosRemotos.length === 0 && leerColaDocs().length === 0) {
+          const soloLocales = documentosRef.current.filter(d => !mapeo.has(d.id) && !descartados.has(d.id))
+          if (soloLocales.length > 0) {
+            for (const d of soloLocales) {
+              encolarOperacion({
+                tipo: 'crear',
+                localId: d.id,
+                datos: { tipo: d.tipo, periodo: d.periodo, fechaLimite: d.fechaLimite, notas: d.notas },
+              })
+              if (d.estado === 'entregado') {
+                encolarOperacion({ tipo: 'cambiarEstado', localId: d.id, estado: 'entregado' })
+              }
+            }
+            const subida = await aplicarOperacionesPendientes()
+            subida.mapeo.forEach((idRemoto, idLocal) => mapeo.set(idLocal, idRemoto))
+            subida.descartados.forEach(id => descartados.add(id))
+            avisos.push(...subida.avisos)
+            documentosRemotos = await fetchDocumentosApi()
+          }
+        }
+
         if (avisos.length > 0) {
           setAvisosSync(prev => [...prev, ...avisos])
         }
-
-        // 2) Obtener estado del servidor
-        const documentosRemotos = await fetchDocumentosApi()
 
         // 3) Merge: servidor + locales que siguen pendientes de subir
         const idsRemotos = new Set(documentosRemotos.map(d => d.id))
@@ -276,6 +305,10 @@ export function useDocumentos() {
       return { exito: false, error: 'Solo se permiten archivos .doc, .docx y .pdf' }
     }
 
+    if (datos.archivo.size > TAMANO_MAXIMO) {
+      return { exito: false, error: 'El archivo supera el tamaño máximo de 4 MB.' }
+    }
+
     if (esBimestral(datos.tipo) && !datos.periodo) {
       return { exito: false, error: 'El periodo es obligatorio para evaluaciones y reportes bimestrales.' }
     }
@@ -336,6 +369,10 @@ export function useDocumentos() {
     id: number,
     datos: ActualizarDocumentoData
   ): Promise<{ exito: boolean; error?: string }> => {
+    if (datos.archivo && datos.archivo.size > TAMANO_MAXIMO) {
+      return { exito: false, error: 'El archivo supera el tamaño máximo de 4 MB.' }
+    }
+
     if (backendConectado) {
       try {
         const actualizado = await updateDocumentoApi(id, datos)

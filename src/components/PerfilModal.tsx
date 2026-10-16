@@ -3,7 +3,7 @@ import type { PerfilEstudiante, Registro } from '../types/registro'
 import type { DocumentoServicio } from '../types/documento'
 import { exportarCSV, exportarJSON, parsearBackupJSON } from '../utils/exportUtils'
 import { DocumentosPanel } from './DocumentosPanel'
-import { getConfigServidor, guardarConfigServidor } from '../services/api'
+import type { EstadoServidor } from '../services/api'
 
 interface PerfilModalProps {
   perfil: PerfilEstudiante
@@ -14,7 +14,11 @@ interface PerfilModalProps {
   onGuardar: (nuevoPerfil: PerfilEstudiante) => void
   onRestaurarBackup: (nuevosRegistros: Registro[], nuevoPerfil?: PerfilEstudiante) => void
   onNotificar?: (mensaje: string, tipo: 'exito' | 'error' | 'info' | 'advertencia') => void
-  onConfigServidorCambiada?: () => void
+  pestanaInicial?: 'perfil' | 'respaldo' | 'documentos'
+  // Cuenta en la nube
+  estadoServidor?: EstadoServidor
+  onIniciarSesion?: (password: string) => Promise<{ exito: boolean; error?: string }>
+  onCerrarSesion?: () => void
   // Documentos
   documentosCargando?: boolean
   documentosBackendConectado?: boolean
@@ -37,7 +41,10 @@ export function PerfilModal({
   onGuardar,
   onRestaurarBackup,
   onNotificar,
-  onConfigServidorCambiada,
+  pestanaInicial,
+  estadoServidor = 'sin-conexion',
+  onIniciarSesion,
+  onCerrarSesion,
   // Documentos
   documentosCargando = false,
   documentosBackendConectado = false,
@@ -62,21 +69,30 @@ export function PerfilModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [servidorUrl, setServidorUrl] = useState(() => getConfigServidor().url)
-  const [servidorToken, setServidorToken] = useState(() => getConfigServidor().token)
+  const [password, setPassword] = useState('')
+  const [entrando, setEntrando] = useState(false)
+
+  // Al abrir el modal, ir a la pestaña pedida (p. ej. la de la cuenta)
+  const [prevAbierto, setPrevAbierto] = useState(abierto)
+  if (abierto !== prevAbierto) {
+    setPrevAbierto(abierto)
+    if (abierto && pestanaInicial) setPestanaActiva(pestanaInicial)
+  }
 
   if (!abierto) return null
 
-  const handleGuardarServidor = (e: React.FormEvent) => {
+  const handleIniciarSesion = async (e: React.FormEvent) => {
     e.preventDefault()
-    try {
-      guardarConfigServidor(servidorUrl, servidorToken)
-    } catch {
-      onNotificar?.('No se pudo guardar la configuración del servidor', 'error')
-      return
+    if (!onIniciarSesion) return
+    setEntrando(true)
+    const resultado = await onIniciarSesion(password)
+    setEntrando(false)
+    if (resultado.exito) {
+      setPassword('')
+      onNotificar?.('Sesión iniciada. Sincronizando con la nube…', 'exito')
+    } else {
+      onNotificar?.(resultado.error || 'No se pudo iniciar sesión', 'error')
     }
-    onNotificar?.('Configuración del servidor guardada', 'exito')
-    onConfigServidorCambiada?.()
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -182,7 +198,7 @@ export function PerfilModal({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              💾 Copia de Seguridad
+              ☁️ Nube y Respaldo
             </button>
           </div>
         </div>
@@ -413,50 +429,60 @@ export function PerfilModal({
               </div>
             </div>
 
-            {/* Conexión al servidor */}
-            <form onSubmit={handleGuardarServidor} className="pt-2 space-y-3 border-t border-slate-800">
+            {/* Cuenta en la nube */}
+            <div className="pt-2 space-y-3 border-t border-slate-800">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                Conexión al Servidor
+                Cuenta en la Nube
               </h4>
-              <p className="text-xs text-slate-400">
-                Opcional. Solo hace falta si tienes un backend propio para sincronizar entre
-                dispositivos. Se guarda únicamente en este dispositivo.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    URL de la API
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="http://localhost:3001/api"
-                    value={servidorUrl}
-                    onChange={(e) => setServidorUrl(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Token de acceso
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    placeholder="El valor de API_TOKEN del servidor"
-                    value={servidorToken}
-                    onChange={(e) => setServidorToken(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition-all cursor-pointer shadow-md"
-              >
-                <span>🔌</span>
-                <span>Guardar y reconectar</span>
-              </button>
-            </form>
+              {estadoServidor === 'conectado' ? (
+                <>
+                  <p className="text-xs text-slate-400">
+                    <span className="text-emerald-400 font-semibold">Sesión iniciada.</span> Tus
+                    horas, perfil y documentos se sincronizan con la nube.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCerrarSesion?.()
+                      onNotificar?.('Sesión cerrada en este dispositivo', 'info')
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition-all cursor-pointer shadow-md"
+                  >
+                    <span>🚪</span>
+                    <span>Cerrar sesión</span>
+                  </button>
+                </>
+              ) : (
+                <form onSubmit={handleIniciarSesion} className="space-y-3">
+                  <p className="text-xs text-slate-400">
+                    {estadoServidor === 'sin-conexion'
+                      ? 'No hay conexión con la nube ahora mismo. Puedes seguir usando la app: los cambios se guardan aquí y se suben al reconectar.'
+                      : 'Inicia sesión para respaldar tus datos en la nube y verlos desde otros dispositivos. Solo se pide una vez en cada dispositivo.'}
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={entrando}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-xs font-semibold text-white transition-all cursor-pointer shadow-md"
+                  >
+                    <span>🔑</span>
+                    <span>{entrando ? 'Entrando…' : 'Iniciar sesión'}</span>
+                  </button>
+                </form>
+              )}
+            </div>
 
             {/* Opción de Restauración */}
             <div className="pt-2 space-y-3 border-t border-slate-800">

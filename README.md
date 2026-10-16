@@ -59,12 +59,26 @@ npm run dev
 
 ---
 
+## ☁️ Publicar el backend en Vercel + Turso
+
+El backend corre en Vercel como una función serverless y los datos (incluidos los documentos, de hasta 4 MB) se guardan en Turso.
+
+1. **Turso:** crea una base de datos y copia su URL (`libsql://…`) y un token de acceso.
+2. **Contraseña:** en `backend/`, ejecuta `npm run hash-password` y copia `APP_PASSWORD_HASH` y `SESSION_SECRET`.
+3. **Vercel:** importa el repositorio con **Root Directory = `backend`** y añade estas variables de entorno:
+   `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `APP_PASSWORD_HASH`, `SESSION_SECRET` y `CORS_ORIGINS=https://cornelioalexis65-cyber.github.io`.
+4. **GitHub:** en *Settings → Secrets and variables → Actions → Variables*, crea `VITE_API_URL` con `https://<tu-proyecto>.vercel.app/api` y vuelve a lanzar el workflow.
+5. **En la app:** *Configuración → Nube y Respaldo → Iniciar sesión*. La primera vez, si el servidor está vacío, se suben los registros, el perfil y los documentos que ya tenías en el dispositivo.
+
+---
+
 ## 📡 Endpoints de la API REST
 
 | Método | Endpoint | Descripción |
 |---|---|---|
 | `GET` | `/api/health` | Estado del servidor y comprobación de salud (pública) |
-| `GET` | `/api/sesion` | Comprueba que el token es válido |
+| `POST` | `/api/login` | Inicia sesión con la contraseña y devuelve una sesión de 30 días |
+| `GET` | `/api/sesion` | Comprueba que la sesión es válida |
 | `GET` | `/api/registros` | Obtiene todos los registros ordenados por fecha |
 | `POST` | `/api/registros` | Crea un nuevo registro con validación en servidor |
 | `PUT` | `/api/registros/:id` | Actualiza un registro existente |
@@ -78,6 +92,8 @@ npm run dev
 * Validación y sanitización dual (Frontend + Backend).
 * Variables de entorno y bases de datos locales excluidas en `.gitignore`.
 * Sin almacenamiento de secretos en el control de versiones.
-* **Token de acceso:** si defines `API_TOKEN` en `backend/.env`, todas las rutas salvo `/api/health` exigen `Authorization: Bearer <token>` y el servidor escucha en `0.0.0.0`. Sin `API_TOKEN`, solo escucha en `127.0.0.1` (modo local). El token y la URL del servidor se configuran en la app, en **Configuración → Copia de Seguridad → Conexión al servidor**, y se guardan solo en ese dispositivo.
+* **Inicio de sesión con contraseña:** la contraseña solo existe en el servidor como hash scrypt (`APP_PASSWORD_HASH`). Al iniciar sesión, el servidor entrega una sesión firmada con HMAC (`SESSION_SECRET`) que dura 30 días. Todas las rutas salvo `/api/health` y `/api/login` la exigen. Tras 10 intentos fallidos desde una IP, el inicio de sesión se bloquea 15 minutos. Cambiar `SESSION_SECRET` cierra todas las sesiones.
+* **Nada secreto en la app:** la URL del backend se fija al compilar (`VITE_API_URL`, que no es secreta) y la sesión se obtiene al iniciar sesión en **Configuración → Nube y Respaldo**.
+* **Modo local:** sin `APP_PASSWORD_HASH` ni `SESSION_SECRET`, el servidor no pide contraseña y solo escucha en `127.0.0.1`.
 * **CORS restringido:** solo se aceptan los orígenes de desarrollo (`localhost:5173` y `localhost:4173`) y los que añadas en `CORS_ORIGINS`.
 * **Cola offline robusta:** los archivos pendientes se guardan en IndexedDB con el id de su documento. Si el servidor rechaza una operación (400 o 404), se descarta con un aviso en lugar de bloquear el resto de la cola.

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, blob } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const registrosTable = sqliteTable('registros', {
@@ -32,10 +32,17 @@ export const documentosTable = sqliteTable('documentos_servicio', {
   nombreArchivo: text('nombre_archivo').notNull(),
   mimeType: text('mime_type').notNull(),
   tamano: integer('tamano').notNull(),
-  rutaArchivo: text('ruta_archivo').notNull(),        // ruta física en servidor
+  rutaArchivo: text('ruta_archivo').notNull(),        // solo archivos antiguos guardados en disco ('' si está en la BD)
+  contenido: blob('contenido', { mode: 'buffer' }),   // contenido del archivo
   notas: text('notas'),
   creadoEn: text('creado_en').default(sql`CURRENT_TIMESTAMP`),
   actualizadoEn: text('actualizado_en').default(sql`CURRENT_TIMESTAMP`),
+})
+
+export const intentosLoginTable = sqliteTable('intentos_login', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ip: text('ip').notNull(),
+  fecha: integer('fecha').notNull(), // milisegundos
 })
 
 export type RegistroDB = typeof registrosTable.$inferSelect
