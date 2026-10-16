@@ -12,7 +12,10 @@ interface PerfilModalProps {
   abierto: boolean
   onCerrar: () => void
   onGuardar: (nuevoPerfil: PerfilEstudiante) => void
-  onRestaurarBackup: (nuevosRegistros: Registro[], nuevoPerfil?: PerfilEstudiante) => void
+  onRestaurarBackup: (
+    nuevosRegistros: Registro[],
+    nuevoPerfil?: PerfilEstudiante
+  ) => Promise<{ exito: boolean; error?: string }>
   onNotificar?: (mensaje: string, tipo: 'exito' | 'error' | 'info' | 'advertencia') => void
   pestanaInicial?: 'perfil' | 'respaldo' | 'documentos'
   // Cuenta en la nube
@@ -117,7 +120,7 @@ export function PerfilModal({
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (evento) => {
+    reader.onload = async (evento) => {
       const contenido = evento.target?.result as string
       const resultado = parsearBackupJSON(contenido)
 
@@ -126,10 +129,22 @@ export function PerfilModal({
         return
       }
 
-      const totalNuevos = resultado.datos.registros.length
-      onRestaurarBackup(resultado.datos.registros, resultado.datos.perfil)
+      const { registros: delRespaldo, perfil: perfilRespaldo } = resultado.datos
+      const horasRespaldo = Math.round(delRespaldo.reduce((acc, r) => acc + r.horas, 0) * 100) / 100
+      const confirmado = window.confirm(
+        `El respaldo tiene ${delRespaldo.length} actividades (${horasRespaldo} hrs).\n\n` +
+        'Se REEMPLAZARÁN todas tus actividades actuales, en este dispositivo y en la nube, ' +
+        'por las del respaldo. ¿Continuar?'
+      )
+      if (!confirmado) return
+
+      const restauracion = await onRestaurarBackup(delRespaldo, perfilRespaldo)
+      if (!restauracion.exito) {
+        onNotificar?.(restauracion.error || 'No se pudo restaurar el respaldo', 'error')
+        return
+      }
       onNotificar?.(
-        `Se restauraron ${totalNuevos} actividades y la configuración del perfil`,
+        `Se restauraron ${delRespaldo.length} actividades (${horasRespaldo} hrs) y la configuración del perfil`,
         'exito'
       )
       onCerrar()
@@ -375,7 +390,7 @@ export function PerfilModal({
                 <div>
                   <span className="text-slate-500 block">Horas Acumuladas</span>
                   <strong className="text-emerald-400 text-sm">
-                    {registros.reduce((acc, r) => acc + r.horas, 0)} hrs
+                    {Math.round(registros.reduce((acc, r) => acc + r.horas, 0) * 100) / 100} hrs
                   </strong>
                 </div>
                 <div>

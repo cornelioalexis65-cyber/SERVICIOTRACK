@@ -243,8 +243,9 @@ function App() {
     nuevosRegistros: Registro[],
     nuevoPerfil?: PerfilEstudiante
   ) => {
-    await restaurarBackup(nuevosRegistros, nuevoPerfil)
-    limpiarFormulario()
+    const resultado = await restaurarBackup(nuevosRegistros, nuevoPerfil)
+    if (resultado.exito) limpiarFormulario()
+    return resultado
   }
 
   return (

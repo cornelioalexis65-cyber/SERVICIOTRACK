@@ -83,6 +83,18 @@ async function crearTablas() {
   // disco permanente. `ruta_archivo` queda solo para archivos antiguos en disco.
   await agregarColumna(`ALTER TABLE documentos_servicio ADD COLUMN contenido BLOB;`)
 
+  // Identificador que asigna el dispositivo al crear sin conexión: si la misma
+  // alta llega dos veces (reintento, dos sincronizaciones a la vez), el
+  // servidor devuelve la existente en lugar de duplicarla.
+  await agregarColumna(`ALTER TABLE registros ADD COLUMN id_cliente TEXT;`)
+  await client.execute(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_registros_id_cliente ON registros(id_cliente) WHERE id_cliente IS NOT NULL;`
+  )
+  await agregarColumna(`ALTER TABLE documentos_servicio ADD COLUMN id_cliente TEXT;`)
+  await client.execute(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_documentos_id_cliente ON documentos_servicio(id_cliente) WHERE id_cliente IS NOT NULL;`
+  )
+
   // Intentos fallidos de inicio de sesión (límite contra fuerza bruta)
   await client.execute(`
     CREATE TABLE IF NOT EXISTS intentos_login (

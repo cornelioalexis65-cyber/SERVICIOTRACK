@@ -160,18 +160,44 @@ export async function fetchRegistrosApi(): Promise<Registro[]> {
   return res.json()
 }
 
+/**
+ * @param idCliente id local del registro. Si se envía, el servidor no crea
+ *   duplicados aunque la misma alta llegue dos veces.
+ */
 export async function createRegistroApi(
-  datos: Omit<Registro, 'id'>
+  datos: Omit<Registro, 'id'>,
+  idCliente?: number
 ): Promise<Registro> {
   const res = await fetch(apiUrl('/registros'), {
     method: 'POST',
     headers: cabeceras({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(datos),
-    signal: AbortSignal.timeout(4000),
+    body: JSON.stringify(idCliente !== undefined ? { ...datos, idCliente: String(idCliente) } : datos),
+    signal: AbortSignal.timeout(8000),
   })
 
   if (!res.ok) {
     throw await errorDeRespuesta(res, 'Error al guardar el registro en el servidor.')
+  }
+  return res.json()
+}
+
+/**
+ * Reemplaza TODOS los registros del servidor (restaurar un respaldo).
+ */
+export async function reemplazarRegistrosApi(
+  registros: Omit<Registro, 'id'>[]
+): Promise<Registro[]> {
+  const res = await fetch(apiUrl('/registros/reemplazar'), {
+    method: 'POST',
+    headers: cabeceras({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      registros: registros.map(({ fecha, horas, actividad }) => ({ fecha, horas, actividad })),
+    }),
+    signal: AbortSignal.timeout(20000),
+  })
+
+  if (!res.ok) {
+    throw await errorDeRespuesta(res, 'Error al restaurar los registros en el servidor.')
   }
   return res.json()
 }
@@ -246,9 +272,12 @@ export async function fetchDocumentosApi(): Promise<DocumentoServicio[]> {
 }
 
 export async function createDocumentoApi(
-  datos: NuevoDocumentoData
+  datos: NuevoDocumentoData,
+  idCliente?: number
 ): Promise<DocumentoServicio> {
   const formData = new FormData()
+  // Antes que el archivo, para que el servidor lo lea aunque falle la subida
+  if (idCliente !== undefined) formData.append('idCliente', String(idCliente))
   formData.append('tipo', datos.tipo)
   if (datos.periodo) formData.append('periodo', datos.periodo)
   formData.append('fechaLimite', datos.fechaLimite)

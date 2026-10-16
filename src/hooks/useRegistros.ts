@@ -8,8 +8,10 @@ import {
   deleteRegistroApi,
   fetchPerfilApi,
   updatePerfilApi,
+  reemplazarRegistrosApi,
   esErrorPermanente,
 } from '../services/api'
+import { conBloqueo, despuesDeBloqueo } from '../utils/bloqueo'
 
 const STORAGE_KEY = 'serviciotrack-registros'
 const PROFILE_KEY = 'serviciotrack-perfil'
@@ -23,6 +25,8 @@ type OperacionPendiente =
   | { tipo: 'crear'; localId: number; datos: Omit<Registro, 'id'> }
   | { tipo: 'actualizar'; localId: number; datos: Omit<Registro, 'id'> }
   | { tipo: 'eliminar'; localId: number }
+  // Restaurar respaldo sin conexión: sustituye todo lo anterior de la cola
+  | { tipo: 'reemplazar'; localId: 0; registros: Omit<Registro, 'id'>[] }
 
 function leerCola(): OperacionPendiente[] {
   try {
@@ -128,11 +132,15 @@ export function useRegistros() {
         if (descartados.has(op.localId)) {
           // El registro nunca llegó al servidor: sus operaciones posteriores sobran
         } else if (op.tipo === 'crear') {
-          const creado = await createRegistroApi(op.datos)
+          // El id local viaja como idCliente: si esta alta ya llegó antes, el
+          // servidor devuelve la existente en vez de duplicarla
+          const creado = await createRegistroApi(op.datos, op.localId)
           mapeo.set(op.localId, creado.id)
         } else if (op.tipo === 'actualizar') {
           await updateRegistroApi(idRemoto, op.datos)
           mapeo.set(op.localId, idRemoto)
+        } else if (op.tipo === 'reemplazar') {
+          await reemplazarRegistrosApi(op.registros)
         } else {
           await deleteRegistroApi(idRemoto)
         }
@@ -145,8 +153,10 @@ export function useRegistros() {
           break
         }
         if (op.tipo === 'crear') descartados.add(op.localId)
-        const fecha = op.tipo === 'eliminar' ? '' : ` del ${op.datos.fecha}`
-        avisos.push(`Registro${fecha}: el servidor rechazó el cambio (${(err as Error).message}).`)
+        const quien = op.tipo === 'reemplazar'
+          ? 'Restauración del respaldo'
+          : op.tipo === 'eliminar' ? 'Registro' : `Registro del ${op.datos.fecha}`
+        avisos.push(`${quien}: el servidor rechazó el cambio (${(err as Error).message}).`)
       }
 
       // Releer la cola por si se encolaron operaciones durante la sincronización
@@ -158,8 +168,10 @@ export function useRegistros() {
     return { mapeo, descartados, avisos }
   }
 
-  // 2. Comprobar backend, aplicar pendientes y sincronizar registros y perfil
-  const sincronizarConBackend = useCallback(async () => {
+  // 2. Comprobar backend, aplicar pendientes y sincronizar registros y perfil.
+  //    Nunca se ejecutan dos a la vez: recorrerían la misma cola y subirían
+  //    los mismos registros dos veces.
+  const sincronizarConBackend = useCallback(() => conBloqueo('serviciotrack-sync-registros', async () => {
     setSincronizando(true)
     const isOnline = await checkBackendHealth()
     setBackendConectado(isOnline)
@@ -228,12 +240,16 @@ export function useRegistros() {
           setAvisosSync((prev) => [...prev, ...avisos])
         }
 
-        // 5) Merge: datos del servidor + registros locales que aún no se
-        //    aplicaron (evita perder registros creados en offline). Los que
-        //    el servidor rechazó se quitan para no mostrar horas que no cuentan.
+        // 5) Merge: el servidor es la referencia. Solo se conservan aparte los
+        //    registros locales que siguen en la cola esperando subirse (creados
+        //    sin conexión). Cualquier otra copia local sobra: mostrarla sumaría
+        //    horas que no existen en el servidor.
         const idsRemotos = new Set(registrosRemotos.map((r) => r.id))
+        const pendientesDeSubir = new Set(
+          leerCola().filter((op) => op.tipo === 'crear').map((op) => op.localId)
+        )
         const localesSinAplicar = registrosRef.current.filter(
-          (r) => !mapeo.has(r.id) && !idsRemotos.has(r.id) && !descartados.has(r.id)
+          (r) => pendientesDeSubir.has(r.id) && !idsRemotos.has(r.id)
         )
         const combinados = [...registrosRemotos, ...localesSinAplicar]
 
@@ -245,7 +261,7 @@ export function useRegistros() {
     }
     setSincronizando(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }), [])
 
   useEffect(() => {
     sincronizarConBackend()
@@ -277,7 +293,8 @@ export function useRegistros() {
 
   // --- Métricas Derivadas ---
   const totalHours = perfil.horasObjetivo || 500
-  const horasRealizadas = registros.reduce((total, r) => total + r.horas, 0)
+  // Redondeo a 2 decimales: sumar decimales da restos como 318.0000000000004
+  const horasRealizadas = Math.round(registros.reduce((total, r) => total + r.horas, 0) * 100) / 100
   const horasRestantes = Math.max(totalHours - horasRealizadas, 0)
   const progreso = Math.min((horasRealizadas / totalHours) * 100, 100)
   const diasRegistrados = registros.length
@@ -468,46 +485,56 @@ export function useRegistros() {
     }
   }
 
-  const restaurarBackup = async (
+  /**
+   * Restaura un respaldo: REEMPLAZA todos los registros (en este dispositivo
+   * y en la nube) por los del archivo. Antes los añadía, lo que duplicaba
+   * horas si los registros ya existían.
+   */
+  const restaurarBackup = (
     nuevosRegistros: Registro[],
     nuevoPerfil?: PerfilEstudiante
-  ): Promise<void> => {
-    // 1. Reemplazar registros localmente
-    setRegistros(nuevosRegistros)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevosRegistros))
+  ): Promise<{ exito: boolean; error?: string }> =>
+    // Espera a que termine cualquier sincronización para no mezclarse con ella
+    despuesDeBloqueo('serviciotrack-sync-registros', async () => {
+      const datos = nuevosRegistros.map(({ fecha, horas, actividad }) => ({ fecha, horas, actividad }))
+      const conectado = await checkBackendHealth()
+      setBackendConectado(conectado)
 
-    // 2. Si se incluye perfil en el respaldo, actualizarlo
-    if (nuevoPerfil) {
-      setPerfil(nuevoPerfil)
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
-    }
+      if (conectado) {
+        try {
+          // El perfil primero: sus horas objetivo son el límite que valida el servidor
+          if (nuevoPerfil) await updatePerfilApi(nuevoPerfil)
+          const remotos = await reemplazarRegistrosApi(datos)
+          // Lo anterior de la cola queda sustituido por el respaldo
+          guardarCola([])
+          setPendientes(0)
+          setRegistros(remotos)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(remotos))
+          if (nuevoPerfil) {
+            setPerfil(nuevoPerfil)
+            localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
+          }
+          return { exito: true }
+        } catch (err) {
+          if (esErrorPermanente(err)) {
+            return { exito: false, error: (err as Error).message }
+          }
+          // Fallo de red: seguir como si no hubiera conexión
+        }
+      }
 
-    // 3. Sincronizar o encolar para el backend
-    if (backendConectado) {
+      // Sin conexión: aplicar en local y dejar una sola operación pendiente
+      // que sustituye a todo lo anterior de la cola
+      setRegistros(nuevosRegistros)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevosRegistros))
       if (nuevoPerfil) {
-        updatePerfilApi(nuevoPerfil).catch(() => null)
+        setPerfil(nuevoPerfil)
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(nuevoPerfil))
       }
-      for (const reg of nuevosRegistros) {
-        createRegistroApi({
-          fecha: reg.fecha,
-          horas: reg.horas,
-          actividad: reg.actividad,
-        }).catch(() => null)
-      }
-    } else {
-      for (const reg of nuevosRegistros) {
-        encolarOperacion({
-          tipo: 'crear',
-          localId: reg.id,
-          datos: {
-            fecha: reg.fecha,
-            horas: reg.horas,
-            actividad: reg.actividad,
-          },
-        })
-      }
-    }
-  }
+      guardarCola([{ tipo: 'reemplazar', localId: 0, registros: datos }])
+      setPendientes(1)
+      return { exito: true }
+    })
 
   return {
     registros,

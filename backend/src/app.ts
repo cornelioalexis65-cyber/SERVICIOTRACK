@@ -13,7 +13,15 @@ app.disable('x-powered-by')
 // Detrás del proxy de Vercel, la IP real del cliente viene en X-Forwarded-For
 app.set('trust proxy', true)
 app.use(cors(opcionesCors))
-app.use(express.json({ limit: '100kb' }))
+// JSON de hasta 100 KB; la restauración de respaldos usa su propio límite (1 MB)
+const jsonPequeno = express.json({ limit: '100kb' })
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path === '/api/registros/reemplazar') {
+    next()
+    return
+  }
+  jsonPequeno(req, res, next)
+})
 
 // Ruta de comprobación de salud del servidor (Health Check), pública
 app.get('/api/health', (_req, res) => {

@@ -91,6 +91,22 @@ export async function createDocumento(req: Request, res: Response): Promise<void
     const file = req.file
     const { tipo, periodo, fechaLimite, notas } = req.body
 
+    // Alta idempotente: si este documento ya se subió (reintento o dos
+    // sincronizaciones a la vez), devolver el existente
+    const idCliente = typeof req.body.idCliente === 'string' && req.body.idCliente.trim().length <= 64
+      ? req.body.idCliente.trim() || null
+      : null
+    if (idCliente) {
+      const [existente] = await db
+        .select(columnasPublicas)
+        .from(documentosTable)
+        .where(eq(documentosTable.idCliente, idCliente))
+      if (existente) {
+        res.status(200).json(paraCliente(existente))
+        return
+      }
+    }
+
     if (!file) {
       res.status(400).json({ error: 'No se recibió ningún archivo.' })
       return
@@ -130,6 +146,7 @@ export async function createDocumento(req: Request, res: Response): Promise<void
         rutaArchivo: '',
         contenido: file.buffer,
         notas: notas || '',
+        idCliente,
       })
       .returning(columnasPublicas)
 

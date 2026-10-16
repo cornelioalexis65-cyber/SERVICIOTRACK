@@ -11,6 +11,7 @@ import {
   esErrorPermanente,
 } from '../services/api'
 import { getEstadoCalculado, esBimestral } from '../types/documento'
+import { conBloqueo } from '../utils/bloqueo'
 import {
   guardarArchivoIDB,
   obtenerArchivoIDB,
@@ -158,7 +159,8 @@ export function useDocumentos() {
           if (!archivo) {
             throw new OperacionInvalida('el archivo ya no está guardado en este dispositivo')
           }
-          const creado = await createDocumentoApi({ ...op.datos, archivo })
+          // El id local viaja como idCliente: el servidor no lo duplica si ya llegó
+          const creado = await createDocumentoApi({ ...op.datos, archivo }, op.localId)
           mapeo.set(op.localId, creado.id)
           // Conservar la copia offline con el id definitivo
           await moverArchivoIDB(op.localId, creado.id)
@@ -198,7 +200,8 @@ export function useDocumentos() {
   }
 
   // 2. Sincronizar con backend
-  const sincronizarConBackend = useCallback(async () => {
+  // Nunca dos a la vez: recorrerían la misma cola y subirían duplicados
+  const sincronizarConBackend = useCallback(() => conBloqueo('serviciotrack-sync-documentos', async () => {
     setSincronizando(true)
     const isOnline = await checkBackendHealth()
     setBackendConectado(isOnline)
@@ -240,10 +243,14 @@ export function useDocumentos() {
           setAvisosSync(prev => [...prev, ...avisos])
         }
 
-        // 3) Merge: servidor + locales que siguen pendientes de subir
+        // 3) Merge: el servidor es la referencia; aparte solo se conservan
+        //    los documentos locales que siguen en la cola esperando subirse
         const idsRemotos = new Set(documentosRemotos.map(d => d.id))
+        const pendientesDeSubir = new Set(
+          leerColaDocs().filter(op => op.tipo === 'crear').map(op => op.localId)
+        )
         const localesSinAplicar = documentosRef.current.filter(
-          d => !mapeo.has(d.id) && !idsRemotos.has(d.id) && !descartados.has(d.id)
+          d => pendientesDeSubir.has(d.id) && !idsRemotos.has(d.id)
         )
         const combinados = [...documentosRemotos, ...localesSinAplicar]
 
@@ -264,7 +271,7 @@ export function useDocumentos() {
     }
     setSincronizando(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }), [])
 
   useEffect(() => {
     sincronizarConBackend()
@@ -343,7 +350,7 @@ export function useDocumentos() {
 
     if (backendConectado) {
       try {
-        const creado = await createDocumentoApi(datos)
+        const creado = await createDocumentoApi(datos, idLocal)
         // Reemplazar local por remoto y conservar la copia offline con el id nuevo
         setDocumentos(prev => prev.map(d => d.id === idLocal ? { ...creado, estado: getEstadoCalculado(creado) } : d))
         await moverArchivoIDB(idLocal, creado.id)

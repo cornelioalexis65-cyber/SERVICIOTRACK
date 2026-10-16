@@ -7,6 +7,7 @@ export const registrosTable = sqliteTable('registros', {
   horas: real('horas').notNull(),
   actividad: text('actividad').notNull(),
   creadoEn: text('creado_en').default(sql`CURRENT_TIMESTAMP`),
+  idCliente: text('id_cliente'), // id local del dispositivo (altas idempotentes)
 })
 
 export const perfilTable = sqliteTable('perfil_estudiante', {
@@ -37,6 +38,7 @@ export const documentosTable = sqliteTable('documentos_servicio', {
   notas: text('notas'),
   creadoEn: text('creado_en').default(sql`CURRENT_TIMESTAMP`),
   actualizadoEn: text('actualizado_en').default(sql`CURRENT_TIMESTAMP`),
+  idCliente: text('id_cliente'), // id local del dispositivo (altas idempotentes)
 })
 
 export const intentosLoginTable = sqliteTable('intentos_login', {
