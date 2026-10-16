@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Registro, PerfilEstudiante } from './types/registro'
 // import type { DocumentoServicio } from './types/documento' // used via documentos prop
 import { useRegistros } from './hooks/useRegistros'
@@ -33,6 +33,8 @@ function App() {
     backendConectado,
     sincronizando,
     pendientes,
+    avisosSync: avisosSyncRegistros,
+    limpiarAvisosSync: limpiarAvisosSyncRegistros,
     agregarRegistro,
     actualizarRegistro,
     eliminarRegistro,
@@ -47,6 +49,8 @@ function App() {
     backendConectado: documentosBackendConectado,
     sincronizando: documentosSincronizando,
     pendientes: documentosPendientes,
+    avisosSync: avisosSyncDocumentos,
+    limpiarAvisosSync: limpiarAvisosSyncDocumentos,
     subirDocumento,
     actualizarDocumento,
     eliminarDocumento,
@@ -54,11 +58,6 @@ function App() {
     descargarDocumento,
     sincronizarConBackend: sincronizarDocumentos,
   } = useDocumentos()
-
-  // PWA Update Detection
-  usePwaUpdate((reload) => {
-    agregarToast('Nueva versión disponible', 'info', 'Toca para actualizar', { label: 'Actualizar', onClick: reload })
-  })
 
   // Sistema de Notificaciones Toasts
   const [toasts, setToasts] = useState<ToastMensaje[]>([])
@@ -76,6 +75,26 @@ function App() {
   const cerrarToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }
+
+  // PWA Update Detection
+  usePwaUpdate((reload) => {
+    agregarToast('Nueva versión disponible', 'info', 'Toca para actualizar', { label: 'Actualizar', onClick: reload })
+  })
+
+  // Avisar de los cambios offline que el servidor rechazó al sincronizar
+  useEffect(() => {
+    if (avisosSyncRegistros.length === 0) return
+    avisosSyncRegistros.forEach((aviso) => agregarToast('Cambio no sincronizado', 'advertencia', aviso))
+    limpiarAvisosSyncRegistros()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avisosSyncRegistros, limpiarAvisosSyncRegistros])
+
+  useEffect(() => {
+    if (avisosSyncDocumentos.length === 0) return
+    avisosSyncDocumentos.forEach((aviso) => agregarToast('Cambio no sincronizado', 'advertencia', aviso))
+    limpiarAvisosSyncDocumentos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avisosSyncDocumentos, limpiarAvisosSyncDocumentos])
 
   // Modal de Confirmación Moderno
   const [modalConfirm, setModalConfirm] = useState<{
@@ -251,6 +270,7 @@ function App() {
         onGuardar={actualizarPerfil}
         onRestaurarBackup={handleRestaurarBackup}
         onNotificar={(mensaje, tipo) => agregarToast(mensaje, tipo)}
+        onConfigServidorCambiada={handleReconectar}
         // Documentos
         documentosCargando={documentosCargando}
         documentosBackendConectado={documentosBackendConectado}

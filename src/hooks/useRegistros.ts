@@ -8,6 +8,7 @@ import {
   deleteRegistroApi,
   fetchPerfilApi,
   updatePerfilApi,
+  esErrorPermanente,
 } from '../services/api'
 
 const STORAGE_KEY = 'serviciotrack-registros'
@@ -82,6 +83,8 @@ export function useRegistros() {
   const [backendConectado, setBackendConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [pendientes, setPendientes] = useState(() => leerCola().length)
+  const [avisosSync, setAvisosSync] = useState<string[]>([])
+  const limpiarAvisosSync = useCallback(() => setAvisosSync([]), [])
 
   // Siempre el estado más reciente disponible dentro de callbacks
   // memoizados (evita cerrar sobre valores obsoletos y loops de sync).
@@ -99,41 +102,60 @@ export function useRegistros() {
 
   /**
    * Aplica la cola de operaciones pendientes contra el backend, en orden.
-   * Cada operación exitosa se elimina de la cola (persistida). Si alguna
-   * falla, se detiene el proceso y las restantes se reintentan en la
-   * siguiente sincronización. Devuelve el mapeo localId -> idRemoto.
+   * Cada operación procesada se elimina de la cola (persistida).
+   * - Fallo temporal (red, 5xx, token): se detiene y las restantes se
+   *   reintentan en la siguiente sincronización.
+   * - Rechazo permanente (400 por superar la meta, 404…): se descarta la
+   *   operación, se avisa al usuario y se sigue, para que la cola nunca se
+   *   atasque.
+   * Devuelve el mapeo localId -> idRemoto y los ids locales descartados.
    */
-  const aplicarOperacionesPendientes = async (): Promise<Map<number, number>> => {
+  const aplicarOperacionesPendientes = async (): Promise<{
+    mapeo: Map<number, number>
+    descartados: Set<number>
+    avisos: string[]
+  }> => {
     const mapeo = new Map<number, number>()
+    const descartados = new Set<number>()
+    const avisos: string[] = []
     let cola = leerCola()
-    if (cola.length === 0) return mapeo
 
-    for (const op of cola) {
+    while (cola.length > 0) {
+      const op = cola[0]
+      const idRemoto = mapeo.get(op.localId) ?? op.localId
+
       try {
-        if (op.tipo === 'crear') {
+        if (descartados.has(op.localId)) {
+          // El registro nunca llegó al servidor: sus operaciones posteriores sobran
+        } else if (op.tipo === 'crear') {
           const creado = await createRegistroApi(op.datos)
           mapeo.set(op.localId, creado.id)
         } else if (op.tipo === 'actualizar') {
-          const idRemoto = mapeo.get(op.localId) ?? op.localId
           await updateRegistroApi(idRemoto, op.datos)
           mapeo.set(op.localId, idRemoto)
         } else {
-          const idRemoto = mapeo.get(op.localId) ?? op.localId
           await deleteRegistroApi(idRemoto)
         }
-        cola = cola.slice(1)
-        guardarCola(cola)
-        setPendientes(cola.length)
       } catch (err) {
-        console.warn(
-          `Operación pendiente no aplicada (${op.tipo}); se reintenta en la próxima sincronización:`,
-          err
-        )
-        break
+        if (!esErrorPermanente(err)) {
+          console.warn(
+            `Operación pendiente no aplicada (${op.tipo}); se reintenta en la próxima sincronización:`,
+            err
+          )
+          break
+        }
+        if (op.tipo === 'crear') descartados.add(op.localId)
+        const fecha = op.tipo === 'eliminar' ? '' : ` del ${op.datos.fecha}`
+        avisos.push(`Registro${fecha}: el servidor rechazó el cambio (${(err as Error).message}).`)
       }
+
+      // Releer la cola por si se encolaron operaciones durante la sincronización
+      cola = leerCola().slice(1)
+      guardarCola(cola)
+      setPendientes(cola.length)
     }
 
-    return mapeo
+    return { mapeo, descartados, avisos }
   }
 
   // 2. Comprobar backend, aplicar pendientes y sincronizar registros y perfil
@@ -145,7 +167,10 @@ export function useRegistros() {
     if (isOnline) {
       try {
         // 1) Empujar las operaciones realizadas en offline al servidor
-        const mapeo = await aplicarOperacionesPendientes()
+        const { mapeo, descartados, avisos } = await aplicarOperacionesPendientes()
+        if (avisos.length > 0) {
+          setAvisosSync((prev) => [...prev, ...avisos])
+        }
 
         // 2) Obtener el estado actual del servidor
         const [registrosRemotos, perfilRemoto] = await Promise.all([
@@ -154,10 +179,11 @@ export function useRegistros() {
         ])
 
         // 3) Merge: datos del servidor + registros locales que aún no se
-        //    aplicaron (evita perder registros creados en offline)
+        //    aplicaron (evita perder registros creados en offline). Los que
+        //    el servidor rechazó se quitan para no mostrar horas que no cuentan.
         const idsRemotos = new Set(registrosRemotos.map((r) => r.id))
         const localesSinAplicar = registrosRef.current.filter(
-          (r) => !mapeo.has(r.id) && !idsRemotos.has(r.id)
+          (r) => !mapeo.has(r.id) && !idsRemotos.has(r.id) && !descartados.has(r.id)
         )
         const combinados = [...registrosRemotos, ...localesSinAplicar]
 
@@ -464,6 +490,8 @@ export function useRegistros() {
     backendConectado,
     sincronizando,
     pendientes,
+    avisosSync,
+    limpiarAvisosSync,
     totalHours,
     horasRealizadas,
     horasRestantes,

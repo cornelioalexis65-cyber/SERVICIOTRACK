@@ -8,18 +8,37 @@ import {
   deleteDocumentoApi,
   downloadDocumentoApi,
   cambiarEstadoDocumentoApi,
+  esErrorPermanente,
 } from '../services/api'
 import { getEstadoCalculado, esBimestral } from '../types/documento'
-import { guardarArchivoIDB, obtenerArchivoIDB, eliminarArchivoIDB, limpiarArchivosHuerfanos } from '../utils/idb'
+import {
+  guardarArchivoIDB,
+  obtenerArchivoIDB,
+  obtenerRegistroArchivoIDB,
+  moverArchivoIDB,
+  eliminarArchivoIDB,
+  limpiarArchivosHuerfanos,
+} from '../utils/idb'
 
 const STORAGE_KEY = 'serviciotrack-documentos'
 const PENDING_KEY = 'serviciotrack-documentos-pending'
 
+type MetadatosNuevoDocumento = Omit<NuevoDocumentoData, 'archivo'>
+type MetadatosActualizarDocumento = Omit<ActualizarDocumentoData, 'archivo'>
+
+/**
+ * La cola vive en localStorage, que solo admite JSON: un `File` se
+ * convertiría en `{}`. Por eso aquí solo van los metadatos y el archivo se
+ * lee de IndexedDB (guardado con el id del documento) al sincronizar.
+ */
 type OperacionPendienteDoc =
-  | { tipo: 'crear'; localId: number; datos: NuevoDocumentoData }
-  | { tipo: 'actualizar'; localId: number; datos: ActualizarDocumentoData }
+  | { tipo: 'crear'; localId: number; datos: MetadatosNuevoDocumento }
+  | { tipo: 'actualizar'; localId: number; datos: MetadatosActualizarDocumento; conArchivo?: boolean }
   | { tipo: 'eliminar'; localId: number }
   | { tipo: 'cambiarEstado'; localId: number; estado: EstadoDocumento }
+
+/** Error al preparar una operación que no se arregla reintentando. */
+class OperacionInvalida extends Error {}
 
 function leerColaDocs(): OperacionPendienteDoc[] {
   try {
@@ -38,12 +57,21 @@ function guardarColaDocs(cola: OperacionPendienteDoc[]) {
   }
 }
 
+function guardarDocumentosLocal(documentos: DocumentoServicio[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(documentos))
+  } catch (e) {
+    console.error('Error al guardar documentos en localStorage:', e)
+  }
+}
+
 export function useDocumentos() {
   const [documentos, setDocumentos] = useState<DocumentoServicio[]>([])
   const [cargando, setCargando] = useState(true)
   const [backendConectado, setBackendConectado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [pendientes, setPendientes] = useState(0)
+  const [avisosSync, setAvisosSync] = useState<string[]>([])
 
   const documentosRef = useRef(documentos)
   useEffect(() => {
@@ -79,40 +107,91 @@ export function useDocumentos() {
   }, [])
 
   /**
-   * Aplica la cola de operaciones pendientes contra el backend.
+   * Recupera el archivo de un documento para subirlo: primero de IndexedDB
+   * y, para documentos creados con versiones anteriores, del base64 que se
+   * guardaba en localStorage.
    */
-  const aplicarOperacionesPendientes = async (): Promise<Map<number, number>> => {
-    const mapeo = new Map<number, number>()
-    let cola = leerColaDocs()
-    if (cola.length === 0) return mapeo
+  const obtenerArchivoParaSubir = async (ids: number[]): Promise<File | undefined> => {
+    for (const id of ids) {
+      const registro = await obtenerRegistroArchivoIDB(id)
+      if (registro) {
+        return new File([registro.blob], registro.nombreArchivo, { type: registro.mimeType })
+      }
+    }
+    for (const id of ids) {
+      const doc = documentosRef.current.find(d => d.id === id)
+      if (doc?.archivoBase64) {
+        return new File([base64ToBlob(doc.archivoBase64, doc.mimeType)], doc.nombreArchivo, { type: doc.mimeType })
+      }
+    }
+    return undefined
+  }
 
-    for (const op of cola) {
+  /**
+   * Aplica la cola de operaciones pendientes contra el backend, en orden.
+   * - Fallo temporal (red, 5xx, token): se detiene y se reintenta después.
+   * - Rechazo permanente (400, 404…): se descarta la operación, se avisa al
+   *   usuario y se sigue con las demás, para que la cola nunca se atasque.
+   */
+  const aplicarOperacionesPendientes = async (): Promise<{
+    mapeo: Map<number, number>
+    descartados: Set<number>
+    avisos: string[]
+  }> => {
+    const mapeo = new Map<number, number>()
+    const descartados = new Set<number>()
+    const avisos: string[] = []
+    let cola = leerColaDocs()
+
+    while (cola.length > 0) {
+      const op = cola[0]
+      const idRemoto = mapeo.get(op.localId) ?? op.localId
+
       try {
-        if (op.tipo === 'crear') {
-          const creado = await createDocumentoApi(op.datos)
+        if (descartados.has(op.localId)) {
+          // El documento nunca llegó al servidor: sus operaciones posteriores sobran
+        } else if (op.tipo === 'crear') {
+          const archivo = await obtenerArchivoParaSubir([op.localId])
+          if (!archivo) {
+            throw new OperacionInvalida('el archivo ya no está guardado en este dispositivo')
+          }
+          const creado = await createDocumentoApi({ ...op.datos, archivo })
           mapeo.set(op.localId, creado.id)
+          // Conservar la copia offline con el id definitivo
+          await moverArchivoIDB(op.localId, creado.id)
         } else if (op.tipo === 'actualizar') {
-          const idRemoto = mapeo.get(op.localId) ?? op.localId
-          await updateDocumentoApi(idRemoto, op.datos)
+          let archivo: File | undefined
+          if (op.conArchivo) {
+            archivo = await obtenerArchivoParaSubir([idRemoto, op.localId])
+            if (!archivo) {
+              throw new OperacionInvalida('el archivo nuevo ya no está guardado en este dispositivo')
+            }
+          }
+          await updateDocumentoApi(idRemoto, { ...op.datos, archivo })
           mapeo.set(op.localId, idRemoto)
         } else if (op.tipo === 'eliminar') {
-          const idRemoto = mapeo.get(op.localId) ?? op.localId
           await deleteDocumentoApi(idRemoto)
         } else if (op.tipo === 'cambiarEstado') {
-          const idRemoto = mapeo.get(op.localId) ?? op.localId
           await cambiarEstadoDocumentoApi(idRemoto, op.estado)
           mapeo.set(op.localId, idRemoto)
         }
-        cola = cola.slice(1)
-        guardarColaDocs(cola)
-        setPendientes(cola.length)
       } catch (err) {
-        console.warn(`Operación pendiente no aplicada (${op.tipo}); se reintenta:`, err)
-        break
+        if (!(err instanceof OperacionInvalida) && !esErrorPermanente(err)) {
+          console.warn(`Operación pendiente no aplicada (${op.tipo}); se reintenta:`, err)
+          break
+        }
+        if (op.tipo === 'crear') descartados.add(op.localId)
+        const motivo = err instanceof Error ? err.message : String(err)
+        avisos.push(`Documento: no se pudo ${NOMBRE_OPERACION[op.tipo]} (${motivo}).`)
       }
+
+      // Releer la cola por si se encolaron operaciones durante la sincronización
+      cola = leerColaDocs().slice(1)
+      guardarColaDocs(cola)
+      setPendientes(cola.length)
     }
 
-    return mapeo
+    return { mapeo, descartados, avisos }
   }
 
   // 2. Sincronizar con backend
@@ -124,15 +203,18 @@ export function useDocumentos() {
     if (isOnline) {
       try {
         // 1) Empujar operaciones pendientes
-        const mapeo = await aplicarOperacionesPendientes()
+        const { mapeo, descartados, avisos } = await aplicarOperacionesPendientes()
+        if (avisos.length > 0) {
+          setAvisosSync(prev => [...prev, ...avisos])
+        }
 
         // 2) Obtener estado del servidor
         const documentosRemotos = await fetchDocumentosApi()
 
-        // 3) Merge: servidor + locales sin aplicar
+        // 3) Merge: servidor + locales que siguen pendientes de subir
         const idsRemotos = new Set(documentosRemotos.map(d => d.id))
         const localesSinAplicar = documentosRef.current.filter(
-          d => !mapeo.has(d.id) && !idsRemotos.has(d.id)
+          d => !mapeo.has(d.id) && !idsRemotos.has(d.id) && !descartados.has(d.id)
         )
         const combinados = [...documentosRemotos, ...localesSinAplicar]
 
@@ -143,12 +225,10 @@ export function useDocumentos() {
         }))
 
         setDocumentos(conEstados)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(conEstados))
+        guardarDocumentosLocal(conEstados)
 
-        // Limpiar archivos huérfanos en IndexedDB
-        const idsValidos = conEstados.map(d => d.id)
-        await limpiarArchivosHuerfanos(idsValidos)
-
+        // Limpiar archivos de documentos que ya no existen
+        await limpiarArchivosHuerfanos(conEstados.map(d => d.id))
       } catch (error) {
         console.warn('Error al sincronizar documentos:', error)
       }
@@ -173,7 +253,7 @@ export function useDocumentos() {
   // Persistir metadatos en localStorage
   useEffect(() => {
     if (!cargando) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(documentos))
+      guardarDocumentosLocal(documentos)
     }
   }, [documentos, cargando])
 
@@ -205,9 +285,7 @@ export function useDocumentos() {
       return { exito: false, error: 'La fecha límite no puede ser anterior a hoy.' }
     }
 
-    // Guardar archivo en IndexedDB (offline)
-    const idLocal = Date.now()
-    const archivoBase64 = await fileToBase64(datos.archivo)
+    const idLocal = generarIdLocal(documentosRef.current)
 
     const nuevoLocal: DocumentoServicio = {
       id: idLocal,
@@ -218,34 +296,40 @@ export function useDocumentos() {
       nombreArchivo: datos.archivo.name,
       mimeType: datos.archivo.type,
       tamaño: datos.archivo.size,
-      archivoBase64,
       notas: datos.notas,
       creadoEn: new Date().toISOString(),
       actualizadoEn: new Date().toISOString(),
     }
 
-    // Guardar blob en IndexedDB
-    await guardarArchivoIDB(datos.archivo, datos.archivo.name, datos.archivo.type)
+    // Guardar el archivo en IndexedDB con el id del documento (offline)
+    await guardarArchivoIDB(idLocal, datos.archivo, datos.archivo.name, datos.archivo.type)
 
     setDocumentos(prev => [nuevoLocal, ...prev])
+
+    const { archivo: _archivo, ...metadatos } = datos
 
     if (backendConectado) {
       try {
         const creado = await createDocumentoApi(datos)
-        // Reemplazar local por remoto
-        setDocumentos(prev => prev.map(d => d.id === idLocal ? creado : d))
-        // Eliminar blob local (ya está en servidor)
-        await eliminarArchivoIDB(idLocal)
+        // Reemplazar local por remoto y conservar la copia offline con el id nuevo
+        setDocumentos(prev => prev.map(d => d.id === idLocal ? { ...creado, estado: getEstadoCalculado(creado) } : d))
+        await moverArchivoIDB(idLocal, creado.id)
         return { exito: true, id: creado.id }
-      } catch {
-        // Encolar para sincronizar después
-        encolarOperacion({ tipo: 'crear', localId: idLocal, datos })
+      } catch (err) {
+        if (esErrorPermanente(err)) {
+          // El servidor rechazó el documento: deshacer el alta local
+          setDocumentos(prev => prev.filter(d => d.id !== idLocal))
+          await eliminarArchivoIDB(idLocal)
+          return { exito: false, error: (err as Error).message }
+        }
+        // Fallo de red: encolar para sincronizar después
+        encolarOperacion({ tipo: 'crear', localId: idLocal, datos: metadatos })
         return { exito: true, id: idLocal } // Éxito local, pendiente de sync
       }
-    } else {
-      encolarOperacion({ tipo: 'crear', localId: idLocal, datos })
-      return { exito: true, id: idLocal }
     }
+
+    encolarOperacion({ tipo: 'crear', localId: idLocal, datos: metadatos })
+    return { exito: true, id: idLocal }
   }
 
   const actualizarDocumento = async (
@@ -255,6 +339,9 @@ export function useDocumentos() {
     if (backendConectado) {
       try {
         const actualizado = await updateDocumentoApi(id, datos)
+        if (datos.archivo) {
+          await guardarArchivoIDB(id, datos.archivo, datos.archivo.name, datos.archivo.type)
+        }
         setDocumentos(prev => prev.map(d => d.id === id ? { ...actualizado, estado: getEstadoCalculado(actualizado) } : d))
         return { exito: true }
       } catch (err: any) {
@@ -262,26 +349,27 @@ export function useDocumentos() {
       }
     }
 
-    // Offline: actualizar local y encolar
-    // Si hay archivo nuevo, guardarlo primero en IndexedDB
-    let archivoBase64: string | undefined
-    if (datos.archivo) {
-      await guardarArchivoIDB(datos.archivo, datos.archivo.name, datos.archivo.type)
-      archivoBase64 = await fileToBase64(datos.archivo)
+    // Offline: guardar el archivo nuevo (si hay) en IndexedDB y encolar solo metadatos
+    const { archivo, ...metadatos } = datos
+    if (archivo) {
+      await guardarArchivoIDB(id, archivo, archivo.name, archivo.type)
     }
 
     setDocumentos(prev => prev.map(d => {
       if (d.id === id) {
-        const actualizado = { ...d, ...datos, actualizadoEn: new Date().toISOString() }
-        if (archivoBase64) {
-          actualizado.archivoBase64 = archivoBase64
+        const actualizado: DocumentoServicio = { ...d, ...metadatos, actualizadoEn: new Date().toISOString() }
+        if (archivo) {
+          actualizado.nombreArchivo = archivo.name
+          actualizado.mimeType = archivo.type
+          actualizado.tamaño = archivo.size
+          delete actualizado.archivoBase64
         }
         return { ...actualizado, estado: getEstadoCalculado(actualizado) }
       }
       return d
     }))
 
-    encolarOperacion({ tipo: 'actualizar', localId: id, datos })
+    encolarOperacion({ tipo: 'actualizar', localId: id, datos: metadatos, conArchivo: !!archivo })
     return { exito: true }
   }
 
@@ -334,10 +422,13 @@ export function useDocumentos() {
   }
 
   const descargarDocumento = async (id: number): Promise<void> => {
+    const doc = documentos.find(d => d.id === id)
+    const nombre = doc?.nombreArchivo || `documento_${id}`
+
     // Primero intentar desde IndexedDB (offline)
     const blobLocal = await obtenerArchivoIDB(id)
     if (blobLocal) {
-      triggerDownload(blobLocal, documentos.find(d => d.id === id)?.nombreArchivo || `documento_${id}`)
+      triggerDownload(blobLocal, nombre)
       return
     }
 
@@ -345,23 +436,20 @@ export function useDocumentos() {
     if (backendConectado) {
       try {
         const blob = await downloadDocumentoApi(id)
-        // Guardar en IndexedDB para próxima vez
-        const doc = documentos.find(d => d.id === id)
+        // Guardar en IndexedDB para la próxima vez
         if (doc) {
-          await guardarArchivoIDB(blob, doc.nombreArchivo, doc.mimeType)
+          await guardarArchivoIDB(id, blob, doc.nombreArchivo, doc.mimeType)
         }
-        triggerDownload(blob, doc?.nombreArchivo || `documento_${id}`)
+        triggerDownload(blob, nombre)
         return
       } catch (err) {
         console.error('Error al descargar:', err)
       }
     }
 
-    // Fallback: si tiene base64 en localStorage
-    const doc = documentos.find(d => d.id === id)
+    // Respaldo para documentos guardados con versiones anteriores (base64)
     if (doc?.archivoBase64) {
-      const blob = base64ToBlob(doc.archivoBase64, doc.mimeType)
-      triggerDownload(blob, doc.nombreArchivo)
+      triggerDownload(base64ToBlob(doc.archivoBase64, doc.mimeType), doc.nombreArchivo)
       return
     }
 
@@ -384,12 +472,16 @@ export function useDocumentos() {
       .sort((a, b) => new Date(a.fechaLimite).getTime() - new Date(b.fechaLimite).getTime())
   }
 
+  const limpiarAvisosSync = useCallback(() => setAvisosSync([]), [])
+
   return {
     documentos,
     cargando,
     backendConectado,
     sincronizando,
     pendientes,
+    avisosSync,
+    limpiarAvisosSync,
     subirDocumento,
     actualizarDocumento,
     eliminarDocumento,
@@ -403,13 +495,19 @@ export function useDocumentos() {
 }
 
 // Utilidades
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+const NOMBRE_OPERACION: Record<OperacionPendienteDoc['tipo'], string> = {
+  crear: 'subir',
+  actualizar: 'actualizar',
+  eliminar: 'eliminar',
+  cambiarEstado: 'cambiar el estado',
+}
+
+// ID local único entre los documentos actuales (modo offline)
+function generarIdLocal(existentes: DocumentoServicio[]): number {
+  const ids = new Set(existentes.map(d => d.id))
+  let id = Date.now()
+  while (ids.has(id)) id += 1
+  return id
 }
 
 function base64ToBlob(base64: string, mimeType: string): Blob {

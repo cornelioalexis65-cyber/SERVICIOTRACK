@@ -1,13 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Hook oficial para detectar actualizaciones PWA con vite-plugin-pwa
  * Usa el módulo virtual 'virtual:pwa-register' que genera el plugin
+ *
+ * `onNeedRefresh` se llama UNA sola vez por versión nueva. Se guarda en una
+ * ref para que pasar una función nueva en cada render (lo normal con una
+ * función en línea) no vuelva a disparar el aviso en bucle.
  */
 export function usePwaUpdate(
   onNeedRefresh: (reload: () => Promise<void>) => void
 ) {
   const [needRefresh, setNeedRefresh] = useState<(() => Promise<void>) | null>(null)
+
+  const onNeedRefreshRef = useRef(onNeedRefresh)
+  useEffect(() => {
+    onNeedRefreshRef.current = onNeedRefresh
+  })
 
   useEffect(() => {
     // Import dinámico del módulo virtual que genera vite-plugin-pwa
@@ -45,12 +54,12 @@ export function usePwaUpdate(
       })
   }, [])
 
-  // Efecto para llamar al callback cuando hay refresh disponible
+  // Avisar solo cuando aparece una versión nueva (needRefresh cambia)
   useEffect(() => {
     if (needRefresh) {
-      onNeedRefresh(needRefresh)
+      onNeedRefreshRef.current(needRefresh)
     }
-  }, [needRefresh, onNeedRefresh])
+  }, [needRefresh])
 
   return { needRefresh: !!needRefresh }
 }

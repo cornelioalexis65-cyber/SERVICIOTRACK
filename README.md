@@ -63,7 +63,8 @@ npm run dev
 
 | Método | Endpoint | Descripción |
 |---|---|---|
-| `GET` | `/api/health` | Estado del servidor y comprobación de salud |
+| `GET` | `/api/health` | Estado del servidor y comprobación de salud (pública) |
+| `GET` | `/api/sesion` | Comprueba que el token es válido |
 | `GET` | `/api/registros` | Obtiene todos los registros ordenados por fecha |
 | `POST` | `/api/registros` | Crea un nuevo registro con validación en servidor |
 | `PUT` | `/api/registros/:id` | Actualiza un registro existente |
@@ -77,3 +78,6 @@ npm run dev
 * Validación y sanitización dual (Frontend + Backend).
 * Variables de entorno y bases de datos locales excluidas en `.gitignore`.
 * Sin almacenamiento de secretos en el control de versiones.
+* **Token de acceso:** si defines `API_TOKEN` en `backend/.env`, todas las rutas salvo `/api/health` exigen `Authorization: Bearer <token>` y el servidor escucha en `0.0.0.0`. Sin `API_TOKEN`, solo escucha en `127.0.0.1` (modo local). El token y la URL del servidor se configuran en la app, en **Configuración → Copia de Seguridad → Conexión al servidor**, y se guardan solo en ese dispositivo.
+* **CORS restringido:** solo se aceptan los orígenes de desarrollo (`localhost:5173` y `localhost:4173`) y los que añadas en `CORS_ORIGINS`.
+* **Cola offline robusta:** los archivos pendientes se guardan en IndexedDB con el id de su documento. Si el servidor rechaza una operación (400 o 404), se descarta con un aviso en lugar de bloquear el resto de la cola.

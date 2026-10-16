@@ -3,6 +3,7 @@ import type { PerfilEstudiante, Registro } from '../types/registro'
 import type { DocumentoServicio } from '../types/documento'
 import { exportarCSV, exportarJSON, parsearBackupJSON } from '../utils/exportUtils'
 import { DocumentosPanel } from './DocumentosPanel'
+import { getConfigServidor, guardarConfigServidor } from '../services/api'
 
 interface PerfilModalProps {
   perfil: PerfilEstudiante
@@ -13,6 +14,7 @@ interface PerfilModalProps {
   onGuardar: (nuevoPerfil: PerfilEstudiante) => void
   onRestaurarBackup: (nuevosRegistros: Registro[], nuevoPerfil?: PerfilEstudiante) => void
   onNotificar?: (mensaje: string, tipo: 'exito' | 'error' | 'info' | 'advertencia') => void
+  onConfigServidorCambiada?: () => void
   // Documentos
   documentosCargando?: boolean
   documentosBackendConectado?: boolean
@@ -35,6 +37,7 @@ export function PerfilModal({
   onGuardar,
   onRestaurarBackup,
   onNotificar,
+  onConfigServidorCambiada,
   // Documentos
   documentosCargando = false,
   documentosBackendConectado = false,
@@ -59,7 +62,22 @@ export function PerfilModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [servidorUrl, setServidorUrl] = useState(() => getConfigServidor().url)
+  const [servidorToken, setServidorToken] = useState(() => getConfigServidor().token)
+
   if (!abierto) return null
+
+  const handleGuardarServidor = (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      guardarConfigServidor(servidorUrl, servidorToken)
+    } catch {
+      onNotificar?.('No se pudo guardar la configuración del servidor', 'error')
+      return
+    }
+    onNotificar?.('Configuración del servidor guardada', 'exito')
+    onConfigServidorCambiada?.()
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -394,6 +412,51 @@ export function PerfilModal({
                 </button>
               </div>
             </div>
+
+            {/* Conexión al servidor */}
+            <form onSubmit={handleGuardarServidor} className="pt-2 space-y-3 border-t border-slate-800">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Conexión al Servidor
+              </h4>
+              <p className="text-xs text-slate-400">
+                Opcional. Solo hace falta si tienes un backend propio para sincronizar entre
+                dispositivos. Se guarda únicamente en este dispositivo.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    URL de la API
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="http://localhost:3001/api"
+                    value={servidorUrl}
+                    onChange={(e) => setServidorUrl(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Token de acceso
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder="El valor de API_TOKEN del servidor"
+                    value={servidorToken}
+                    onChange={(e) => setServidorToken(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950/70 border border-slate-700/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition-all cursor-pointer shadow-md"
+              >
+                <span>🔌</span>
+                <span>Guardar y reconectar</span>
+              </button>
+            </form>
 
             {/* Opción de Restauración */}
             <div className="pt-2 space-y-3 border-t border-slate-800">

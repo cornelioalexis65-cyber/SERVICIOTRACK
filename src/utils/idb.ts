@@ -1,22 +1,26 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
+export interface ArchivoGuardado {
+  id: number;            // mismo id que el documento (local o del servidor)
+  blob: Blob;
+  nombreArchivo: string;
+  mimeType: string;
+  tamaño: number;
+  guardadoEn: string;
+}
+
 interface ServicioTrackDB extends DBSchema {
   documentos: {
     key: number;
-    value: {
-      id: number;
-      blob: Blob;
-      nombreArchivo: string;
-      mimeType: string;
-      tamaño: number;
-      guardadoEn: string;
-    };
+    value: ArchivoGuardado;
     indexes: { 'by-fecha': string };
   };
 }
 
 const DB_NAME = 'serviciotrack-documentos';
-const DB_VERSION = 1;
+// v2: la clave es el id del documento (en v1 era un autoincremento que no
+// coincidía con el documento y mezclaba archivos).
+const DB_VERSION = 2;
 const STORE_NAME = 'documentos';
 
 let dbPromise: Promise<IDBPDatabase<ServicioTrackDB>> | null = null;
@@ -25,7 +29,11 @@ function getDB(): Promise<IDBPDatabase<ServicioTrackDB>> {
   if (!dbPromise) {
     dbPromise = openDB<ServicioTrackDB>(DB_NAME, DB_VERSION, {
       upgrade(db) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+        // Los archivos de v1 no se pueden asociar a su documento: se descartan.
+        if (db.objectStoreNames.contains(STORE_NAME)) {
+          db.deleteObjectStore(STORE_NAME);
+        }
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('by-fecha', 'guardadoEn');
       },
     });
@@ -34,26 +42,27 @@ function getDB(): Promise<IDBPDatabase<ServicioTrackDB>> {
 }
 
 /**
- * Guarda un archivo (Blob) en IndexedDB y devuelve el ID asignado.
+ * Guarda (o reemplaza) el archivo del documento `id`.
  */
 export async function guardarArchivoIDB(
+  id: number,
   blob: Blob,
   nombreArchivo: string,
   mimeType: string
-): Promise<number> {
+): Promise<void> {
   const db = await getDB();
-  const id = await db.add(STORE_NAME, {
+  await db.put(STORE_NAME, {
+    id,
     blob,
     nombreArchivo,
     mimeType,
     tamaño: blob.size,
     guardadoEn: new Date().toISOString(),
-  } as any); // id is auto-generated
-  return id as number;
+  });
 }
 
 /**
- * Obtiene el Blob de un archivo por su ID.
+ * Obtiene el Blob del archivo del documento `id`.
  */
 export async function obtenerArchivoIDB(id: number): Promise<Blob | undefined> {
   const db = await getDB();
@@ -62,22 +71,31 @@ export async function obtenerArchivoIDB(id: number): Promise<Blob | undefined> {
 }
 
 /**
- * Obtiene el registro completo (metadatos + blob) por ID.
+ * Obtiene el registro completo (metadatos + blob) del documento `id`.
  */
-export async function obtenerRegistroArchivoIDB(id: number): Promise<{
-  id: number;
-  blob: Blob;
-  nombreArchivo: string;
-  mimeType: string;
-  tamaño: number;
-  guardadoEn: string;
-} | undefined> {
+export async function obtenerRegistroArchivoIDB(id: number): Promise<ArchivoGuardado | undefined> {
   const db = await getDB();
   return db.get(STORE_NAME, id);
 }
 
 /**
- * Elimina un archivo de IndexedDB.
+ * Cambia la clave de un archivo (por ejemplo, del id local al id que asignó
+ * el servidor al sincronizar).
+ */
+export async function moverArchivoIDB(desde: number, hacia: number): Promise<void> {
+  if (desde === hacia) return;
+  const db = await getDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const record = await tx.store.get(desde);
+  if (record) {
+    await tx.store.put({ ...record, id: hacia });
+    await tx.store.delete(desde);
+  }
+  await tx.done;
+}
+
+/**
+ * Elimina el archivo del documento `id`.
  */
 export async function eliminarArchivoIDB(id: number): Promise<void> {
   const db = await getDB();
@@ -85,15 +103,15 @@ export async function eliminarArchivoIDB(id: number): Promise<void> {
 }
 
 /**
- * Limpia archivos huérfanos (que no tienen metadatos en localStorage).
- * Útil para mantenimiento periódico.
+ * Elimina los archivos cuyo documento ya no existe.
  */
 export async function limpiarArchivosHuerfanos(idsValidos: number[]): Promise<number> {
   const db = await getDB();
+  const validos = new Set(idsValidos);
   const todos = await db.getAllKeys(STORE_NAME);
   let eliminados = 0;
   for (const id of todos) {
-    if (!idsValidos.includes(id)) {
+    if (!validos.has(id)) {
       await db.delete(STORE_NAME, id);
       eliminados++;
     }

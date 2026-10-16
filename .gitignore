@@ -35,3 +35,7 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Archivos subidos al backend (documentos personales)
+backend/uploads/
+uploads/
