@@ -1,76 +1,43 @@
-import { useState, useEffect } from 'react'
+import { useState, useSyncExternalStore } from 'react'
+import {
+  suscribirseInstalacion,
+  puedeInstalarDirecto,
+  estaInstalada,
+  instalarDirecto,
+  detectarPlataforma,
+  detectarNavegadorLimitado,
+  enlaceAbrirEnChrome,
+} from '../utils/instalacion'
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
-
+/**
+ * Aviso con el botón "Instalar app".
+ * - Si el navegador lo permite (Chrome, Edge, Samsung Internet), el botón
+ *   abre directamente su ventana de instalación.
+ * - Si no, el botón muestra una guía para ese caso (abrir en Chrome, menú del
+ *   navegador o pasos de Safari en iPhone).
+ */
 export function InstalarAppBanner() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [esInstalable, setEsInstalable] = useState(false)
-  const [mostrandoGuiaIOS, setMostrandoGuiaIOS] = useState(false)
+  const directo = useSyncExternalStore(suscribirseInstalacion, puedeInstalarDirecto, () => false)
+  const instalada = useSyncExternalStore(suscribirseInstalacion, estaInstalada, () => false)
+  const [plataforma] = useState(detectarPlataforma)
+  const [limitado] = useState(detectarNavegadorLimitado)
+  const [mostrandoGuia, setMostrandoGuia] = useState(false)
 
-  // Inicialización directa y sin efectos secundarios (evita re-renders en cascada)
-  const [yaInstalada] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      // @ts-expect-error - navigator.standalone es una propiedad específica de iOS
-      Boolean(navigator.standalone)
-    )
-  })
+  if (instalada) {
+    return null
+  }
 
-  const [esIOS] = useState(() => {
-    if (typeof window === 'undefined') return false
-    const userAgent = window.navigator.userAgent.toLowerCase()
-    return /iphone|ipad|ipod/.test(userAgent)
-  })
-
-  const [esAndroid] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return /android/.test(window.navigator.userAgent.toLowerCase())
-  })
-
-  useEffect(() => {
-    if (yaInstalada) return
-
-    // Capturar evento de instalación para Android / Chrome / Edge
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
-      setEsInstalable(true)
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    }
-  }, [yaInstalada])
-
-  if (yaInstalada) {
+  // En PC sin botón del navegador no hay nada útil que mostrar
+  if (!directo && plataforma === 'otro') {
     return null
   }
 
   const instalarApp = async () => {
-    if (deferredPrompt) {
-      await deferredPrompt.prompt()
-      const choice = await deferredPrompt.userChoice
-      if (choice.outcome === 'accepted') {
-        setEsInstalable(false)
-        setDeferredPrompt(null)
-      }
-    } else if (esIOS || esAndroid) {
-      setMostrandoGuiaIOS(!mostrandoGuiaIOS)
+    if (directo) {
+      const resultado = await instalarDirecto()
+      if (resultado !== 'no-disponible') return
     }
-  }
-
-  // Mostrar si es instalable (Android/escritorio con botón del navegador), en
-  // iOS (instrucciones) o en Android sin botón del navegador (instrucciones del
-  // menú: Samsung Internet, navegador de Xiaomi, o si se descartó el aviso)
-  const guiaManual = !esInstalable && (esIOS || esAndroid)
-  if (!esInstalable && !guiaManual) {
-    return null
+    setMostrandoGuia((v) => !v)
   }
 
   return (
@@ -81,13 +48,9 @@ export function InstalarAppBanner() {
             📱
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">
-              {esIOS ? 'Instalar ServicioTrack en tu iPhone / iPad' : 'Instala ServicioTrack en tu Celular'}
-            </h3>
+            <h3 className="text-sm font-bold text-white">Instala ServicioTrack en tu celular</h3>
             <p className="text-xs text-indigo-200/80">
-              {esIOS
-                ? 'Accede sin internet desde tu pantalla de inicio como una app normal.'
-                : 'Ábrela en cualquier momento 100% sin conexión a internet.'}
+              Ábrela desde tu pantalla de inicio como una app normal, también sin internet.
             </p>
           </div>
         </div>
@@ -95,33 +58,66 @@ export function InstalarAppBanner() {
         <button
           type="button"
           onClick={instalarApp}
-          className="w-full sm:w-auto px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all transform active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+          id="btn-instalar-app"
+          className="w-full sm:w-auto px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all transform active:scale-95 cursor-pointer flex items-center justify-center gap-2"
         >
           <span>📲</span>
-          <span>{guiaManual ? (mostrandoGuiaIOS ? 'Cerrar Guía' : '¿Cómo Instalar?') : 'Instalar App'}</span>
+          <span>{mostrandoGuia ? 'Cerrar guía' : 'Instalar app'}</span>
         </button>
       </div>
 
-      {esIOS && mostrandoGuiaIOS && (
-        <div className="mt-3 pt-3 border-t border-indigo-500/20 text-xs text-slate-300 space-y-1.5 bg-slate-950/40 p-3 rounded-xl">
-          <p className="font-semibold text-indigo-300">Pasos para instalar en iOS (Safari):</p>
-          <ol className="list-decimal list-inside space-y-1 text-slate-400">
-            <li>Toca el botón <span className="text-white font-medium">Compartir ⎋</span> en la barra inferior de Safari.</li>
-            <li>Desliza hacia abajo y selecciona <span className="text-white font-medium">"Agregar al inicio ➕"</span>.</li>
-            <li>Presiona <span className="text-white font-medium">"Agregar"</span> y ¡listo! La app abrirá sin internet.</li>
-          </ol>
-        </div>
-      )}
-
-      {esAndroid && guiaManual && mostrandoGuiaIOS && (
-        <div className="mt-3 pt-3 border-t border-indigo-500/20 text-xs text-slate-300 space-y-1.5 bg-slate-950/40 p-3 rounded-xl">
-          <p className="font-semibold text-indigo-300">Pasos para instalar en Android:</p>
-          <ol className="list-decimal list-inside space-y-1 text-slate-400">
-            <li>Abre esta página en <span className="text-white font-medium">Google Chrome</span> (funciona mejor que otros navegadores).</li>
-            <li>Toca el menú <span className="text-white font-medium">⋮</span> arriba a la derecha.</li>
-            <li>Elige <span className="text-white font-medium">"Instalar app"</span> o <span className="text-white font-medium">"Agregar a pantalla principal"</span>.</li>
-            <li>Confirma con <span className="text-white font-medium">"Instalar"</span> y aparecerá el icono junto a tus apps.</li>
-          </ol>
+      {mostrandoGuia && (
+        <div className="mt-3 pt-3 border-t border-indigo-500/20 text-xs text-slate-300 space-y-2 bg-slate-950/40 p-3 rounded-xl">
+          {plataforma === 'android' && limitado ? (
+            <>
+              <p className="font-semibold text-indigo-300">
+                {limitado === 'interno'
+                  ? 'Abriste el link dentro de otra app (WhatsApp, Instagram…), y desde ahí no se puede instalar.'
+                  : 'Este navegador no permite instalar con un botón.'}
+              </p>
+              <a
+                href={enlaceAbrirEnChrome()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white"
+              >
+                <span>🌐</span>
+                <span>Abrir en Chrome</span>
+              </a>
+              <p className="text-slate-400">
+                En Chrome vuelve a tocar <span className="text-white font-medium">"Instalar app"</span>. Si no tienes
+                Chrome, abre el menú de tu navegador y busca{' '}
+                <span className="text-white font-medium">"Agregar a pantalla principal"</span>.
+              </p>
+            </>
+          ) : plataforma === 'android' ? (
+            <>
+              <p className="font-semibold text-indigo-300">Tu navegador no ofreció el botón de instalación. Hazlo desde el menú:</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                <li>Toca el menú <span className="text-white font-medium">⋮</span> arriba a la derecha.</li>
+                <li>
+                  Elige <span className="text-white font-medium">"Instalar app"</span> o{' '}
+                  <span className="text-white font-medium">"Agregar a pantalla principal"</span>.
+                </li>
+                <li>Confirma con <span className="text-white font-medium">"Instalar"</span>.</li>
+              </ol>
+              <p className="text-slate-500">
+                Si antes rechazaste la instalación, Chrome puede tardar en volver a ofrecer el botón; el menú siempre funciona.
+              </p>
+            </>
+          ) : limitado === 'interno' ? (
+            <p className="font-semibold text-indigo-300">
+              Abriste el link dentro de otra app. Toca <span className="text-white">⋯</span> o el icono de compartir y elige{' '}
+              <span className="text-white">"Abrir en Safari"</span>; después sigue los pasos para instalar.
+            </p>
+          ) : (
+            <>
+              <p className="font-semibold text-indigo-300">En iPhone se instala desde Safari:</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                <li>Toca el botón <span className="text-white font-medium">Compartir ⎋</span> en la barra de Safari.</li>
+                <li>Desliza y elige <span className="text-white font-medium">"Agregar a inicio ➕"</span>.</li>
+                <li>Toca <span className="text-white font-medium">"Agregar"</span> y listo.</li>
+              </ol>
+            </>
+          )}
         </div>
       )}
     </div>
