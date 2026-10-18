@@ -16,23 +16,25 @@ export default defineConfig({
       devOptions: {
         enabled: true,
       },
-      includeAssets: ['favicon.svg', 'pwa-icon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg', 'pwa-icon.svg', 'icons.svg', 'apple-touch-icon.png'],
       manifest: {
+        id: BASE_PATH,
         name: 'ServicioTrack - Control de Servicio Social',
         short_name: 'ServicioTrack',
         description: 'Gestor y control de horas de servicio social con funcionamiento 100% offline.',
+        lang: 'es',
         theme_color: '#4f46e5',
         background_color: '#020617',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: BASE_PATH,
+        // Android (Chrome) solo ofrece "Instalar" con iconos PNG de 192 y 512 px;
+        // con un único SVG la app no se consideraba instalable
         icons: [
-          {
-            src: 'pwa-icon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'pwa-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
       workbox: {

@@ -26,6 +26,11 @@ export function InstalarAppBanner() {
     return /iphone|ipad|ipod/.test(userAgent)
   })
 
+  const [esAndroid] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return /android/.test(window.navigator.userAgent.toLowerCase())
+  })
+
   useEffect(() => {
     if (yaInstalada) return
 
@@ -55,13 +60,16 @@ export function InstalarAppBanner() {
         setEsInstalable(false)
         setDeferredPrompt(null)
       }
-    } else if (esIOS) {
+    } else if (esIOS || esAndroid) {
       setMostrandoGuiaIOS(!mostrandoGuiaIOS)
     }
   }
 
-  // Mostrar si es instalable en Android/Desktop o si está en iOS (para dar instrucciones)
-  if (!esInstalable && !esIOS) {
+  // Mostrar si es instalable (Android/escritorio con botón del navegador), en
+  // iOS (instrucciones) o en Android sin botón del navegador (instrucciones del
+  // menú: Samsung Internet, navegador de Xiaomi, o si se descartó el aviso)
+  const guiaManual = !esInstalable && (esIOS || esAndroid)
+  if (!esInstalable && !guiaManual) {
     return null
   }
 
@@ -90,7 +98,7 @@ export function InstalarAppBanner() {
           className="w-full sm:w-auto px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all transform active:scale-95 cursor-pointer flex items-center justify-center gap-2"
         >
           <span>📲</span>
-          <span>{esIOS ? (mostrandoGuiaIOS ? 'Cerrar Guía' : '¿Cómo Instalar?') : 'Instalar App'}</span>
+          <span>{guiaManual ? (mostrandoGuiaIOS ? 'Cerrar Guía' : '¿Cómo Instalar?') : 'Instalar App'}</span>
         </button>
       </div>
 
@@ -101,6 +109,18 @@ export function InstalarAppBanner() {
             <li>Toca el botón <span className="text-white font-medium">Compartir ⎋</span> en la barra inferior de Safari.</li>
             <li>Desliza hacia abajo y selecciona <span className="text-white font-medium">"Agregar al inicio ➕"</span>.</li>
             <li>Presiona <span className="text-white font-medium">"Agregar"</span> y ¡listo! La app abrirá sin internet.</li>
+          </ol>
+        </div>
+      )}
+
+      {esAndroid && guiaManual && mostrandoGuiaIOS && (
+        <div className="mt-3 pt-3 border-t border-indigo-500/20 text-xs text-slate-300 space-y-1.5 bg-slate-950/40 p-3 rounded-xl">
+          <p className="font-semibold text-indigo-300">Pasos para instalar en Android:</p>
+          <ol className="list-decimal list-inside space-y-1 text-slate-400">
+            <li>Abre esta página en <span className="text-white font-medium">Google Chrome</span> (funciona mejor que otros navegadores).</li>
+            <li>Toca el menú <span className="text-white font-medium">⋮</span> arriba a la derecha.</li>
+            <li>Elige <span className="text-white font-medium">"Instalar app"</span> o <span className="text-white font-medium">"Agregar a pantalla principal"</span>.</li>
+            <li>Confirma con <span className="text-white font-medium">"Instalar"</span> y aparecerá el icono junto a tus apps.</li>
           </ol>
         </div>
       )}
